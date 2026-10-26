@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Hub</title>
+<style>
+:root { --bg:#0e1116; --panel:#161b22; --line:#2a313c; --fg:#e6edf3; --muted:#8b949e; --accent:#4cc2ff; --ok:#3fb950; --warn:#d29922; --err:#f85149; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+header { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; padding:14px 24px; border-bottom:1px solid var(--line); }
+header h1 { font-size:16px; margin:0; letter-spacing:.3px; }
+header .sub { color:var(--muted); font-size:12px; }
+main { max-width:1100px; margin:0 auto; padding:20px 24px 60px; }
+form.add { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px; }
+input, button { font:inherit; color:var(--fg); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:7px 10px; }
+input:focus-visible, button:focus-visible, a:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+input.path { flex:1 1 360px; } input.name { flex:0 1 200px; }
+button { cursor:pointer; } button:hover:not(:disabled) { border-color:var(--accent); }
+button:disabled { opacity:.5; cursor:default; }
+button.primary { background:var(--accent); color:#04141f; border-color:var(--accent); font-weight:600; }
+button.danger:hover:not(:disabled) { border-color:var(--err); color:var(--err); }
+.msg { min-height:20px; margin:-8px 0 12px; font-size:13px; color:var(--err); }
+.msg.ok { color:var(--ok); }
+.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap:14px; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:10px; }
+.card.missing { border-color:var(--err); }
+.top { display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
+.title { font-weight:600; font-size:15px; overflow-wrap:anywhere; }
+.path { color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+.badge { font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted); white-space:nowrap; }
+.badge.on { color:var(--ok); border-color:var(--ok); }
+.badge.bad { color:var(--err); border-color:var(--err); }
+.cols { display:flex; flex-wrap:wrap; gap:6px; }
+.col { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:4px 8px; font-size:12px; }
+.col b { font-size:15px; margin-right:4px; }
+.col.prog b { color:var(--accent); } .col.done b { color:var(--ok); }
+.now { font-size:12px; color:var(--muted); }
+.now li { margin-left:16px; overflow-wrap:anywhere; } .now ul { margin:4px 0 0; padding:0; }
+.err { color:var(--err); font-size:12px; overflow-wrap:anywhere; }
+.actions { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:auto; }
+.actions a.open { text-decoration:none; color:#04141f; background:var(--accent); border-radius:6px; padding:7px 12px; font-weight:600; }
+.init { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+.init input { width:110px; }
+.empty { color:var(--muted); text-align:center; padding:60px 0; border:1px dashed var(--line); border-radius:10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AI Hub</h1>
+  <span class="sub">Local project boards. Tasks live in each repo; AI works through the backlog CLI.</span>
+</header>
+<main>
+  <form class="add" id="addForm">
+    <input class="path" id="pathInput" placeholder="Absolute path, e.g. /Users/me/project" aria-label="Project path" required>
+    <input class="name" id="nameInput" placeholder="Name (optional)" aria-label="Project name">
+    <button class="primary" type="submit">Add project</button>
+  </form>
+  <div class="msg" id="msg" role="status"></div>
+  <div class="grid" id="grid"></div>
+</main>
+<script>
+const grid = document.getElementById("grid");
+const msg = document.getElementById("msg");
+const busy = new Set();
+let latest = [];
+
+function setMessage(text, ok) {
+  msg.textContent = text || "";
+  msg.className = ok ? "msg ok" : "msg";
+}
+
+async function api(method, url, body) {
+  const response = await fetch(url, {
+    method,
+    headers: { "content-type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || response.statusText);
+  return data;
+}
+
+function el(tag, props, children) {
+  const node = document.createElement(tag);
+  Object.assign(node, props || {});
+  for (const child of children || []) node.append(child);
+  return node;
+}
+
+function columnChips(summary) {
+  const wrap = el("div", { className: "cols" });
+  for (const [status, count] of Object.entries(summary.counts)) {
+    const kind = /progress/i.test(status) ? "prog" : /done/i.test(status) ? "done" : "";
+    wrap.append(el("span", { className: `col ${kind}` }, [el("b", { textContent: String(count) }), status]));
+  }
+  if (!summary.total) wrap.append(el("span", { className: "col", textContent: "No tasks yet" }));
+  return wrap;
+}
+
+function inProgressList(summary) {
+  if (!summary.inProgress.length) return null;
+  const list = el("ul");
+  for (const task of summary.inProgress.slice(0, 4)) {
+    list.append(el("li", { textContent: `${task.id} ${task.title}` }));
+  }
+  return el("div", { className: "now" }, ["In progress", list]);
+}
+
+async function act(id, label, run) {
+  busy.add(id);
+  setMessage("");
+  render();
+  try {
+    await run();
+    if (label) setMessage(label, true);
+  } catch (error) {
+    setMessage(error.message);
+  } finally {
+    busy.delete(id);
+    await refresh();
+  }
+}
+
+function initControls(project) {
+  const prefix = el("input", { placeholder: "prefix (letters)", maxLength: 10, ariaLabel: "Task ID prefix" });
+  prefix.value = project.name.replace(/[^a-z]/gi, "").slice(0, 4).toLowerCase();
+  const button = el("button", { className: "primary", textContent: "Init Backlog", disabled: busy.has(project.id) });
+  button.onclick = () => act(project.id, "Initialized", () => api("POST", `/api/projects/${project.id}/init`, { prefix: prefix.value }));
+  return el("div", { className: "init" }, [prefix, button]);
+}
+
+function actionRow(project) {
+  const row = el("div", { className: "actions" });
+  const disabled = busy.has(project.id);
+  if (project.initialized && project.exists) {
+    if (project.running) {
+      row.append(el("a", { className: "open", href: project.url, target: "_blank", rel: "noopener", textContent: "Open dashboard" }));
+      const stop = el("button", { textContent: "Stop", disabled });
+      stop.onclick = () => act(project.id, "", () => api("POST", `/api/projects/${project.id}/stop`));
+      row.append(stop);
+    } else {
+      const start = el("button", { className: "primary", textContent: "Start dashboard", disabled });
+      start.onclick = () => act(project.id, "", () => api("POST", `/api/projects/${project.id}/start`));
+      row.append(start);
+    }
+  } else if (project.exists) {
+    row.append(initControls(project));
+  }
+  const remove = el("button", { className: "danger", textContent: "Remove", disabled });
+  remove.onclick = () => {
+    if (confirm(`Remove "${project.name}" from AI Hub? Files in the repo are kept.`)) {
+      act(project.id, "Removed", () => api("DELETE", `/api/projects/${project.id}`));
+    }
+  };
+  row.append(remove);
+  return row;
+}
+
+function statusBadge(project) {
+  if (!project.exists) return el("span", { className: "badge bad", textContent: "Missing" });
+  if (!project.initialized) return el("span", { className: "badge", textContent: "Not initialized" });
+  return el("span", { className: project.running ? "badge on" : "badge", textContent: project.running ? `Running :${project.port}` : "Stopped" });
+}
+
+function card(project) {
+  const node = el("div", { className: `card ${project.exists ? "" : "missing"}` });
+  node.append(el("div", { className: "top" }, [
+    el("div", {}, [el("div", { className: "title", textContent: project.name }), el("div", { className: "path", textContent: project.path })]),
+    statusBadge(project),
+  ]));
+  if (project.summary && project.summary.error) {
+    node.append(el("div", { className: "err", textContent: project.summary.error }));
+  } else if (project.summary) {
+    node.append(columnChips(project.summary));
+    const now = inProgressList(project.summary);
+    if (now) node.append(now);
+  }
+  node.append(actionRow(project));
+  return node;
+}
+
+function render() {
+  grid.replaceChildren();
+  if (!latest.length) {
+    grid.append(el("div", { className: "empty", textContent: "No projects yet. Add a repo path above." }));
+    return;
+  }
+  for (const project of latest) grid.append(card(project));
+}
+
+async function refresh() {
+  try {
+    latest = (await api("GET", "/api/projects")).projects;
+    render();
+  } catch (error) {
+    setMessage(error.message);
+  }
+}
+
+document.getElementById("addForm").onsubmit = async (event) => {
+  event.preventDefault();
+  const path = document.getElementById("pathInput");
+  const name = document.getElementById("nameInput");
+  try {
+    await api("POST", "/api/projects", { path: path.value, name: name.value });
+    path.value = "";
+    name.value = "";
+    setMessage("Added", true);
+    await refresh();
+  } catch (error) {
+    setMessage(error.message);
+  }
+};
+
+refresh();
+setInterval(() => { if (!busy.size && !document.hidden) refresh(); }, 5000);
+</script>
+</body>
+</html>
