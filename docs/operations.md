@@ -27,7 +27,7 @@ Log: `/tmp/ai-hub-4880.log`.
 - Dashboards are child processes of the manager. Stopping or restarting the manager (SIGTERM/SIGINT) stops them; start them again from the UI. A SIGKILL of the manager can leave an orphan dashboard; the next **Start** reuses it if the port still belongs to a `backlog` process.
 - Each project keeps the same dashboard port in the registry. If another process holds it, **Start** reallocates a free port from the range.
 - Projects are initialized with `--include-remote false` so `backlog` never waits on the network. Repos without `.git` use `--no-git`.
-- The summary on each card comes from `backlog task list --json` and is cached 4 seconds.
+- The summary on each card comes from `backlog task list --json` and `backlog milestone list --show-completed --plain`, cached 4 seconds. The sprint list is parsed from the plain text output (tested with 1.55.3). `parseSprints` checks the parsed rows against the counts the CLI prints; on mismatch the card shows a red "Unrecognized `backlog milestone list` output" line and the sprint list is empty. That means the format changed and `parseSprints` in `server.mjs` needs updating.
 
 ## Troubleshooting
 
@@ -37,3 +37,5 @@ Log: `/tmp/ai-hub-4880.log`.
 | Card shows a red error line | Run `backlog task list --json` in that repo |
 | "Missing" badge | Directory moved or deleted; Remove and re-add |
 | `backlog` not found under launchd | Add its directory to `PATH` in the plist |
+| "Unrecognized `backlog milestone list` output" | Backlog.md upgrade changed the text format; fix `parseSprints` |
+| "Agent protocol ... out of date" | Press **Update** on the card, or `POST /api/projects/:id/protocol` |

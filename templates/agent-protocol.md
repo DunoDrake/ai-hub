@@ -8,3 +8,4 @@ Applies on top of the Backlog.md workflow above. Never edit `backlog/` markdown 
 4. **Leave breadcrumbs.** After each milestone run `backlog task edit <id> --append-notes "what changed, what is next, blockers"`. The next session resumes from these notes.
 5. **Finish cleanly.** Check acceptance criteria with `--check-ac`, write `--final-summary`, then set status to Done.
 6. **Report.** When the user asks for a report, summarize from `backlog task list --plain` and each task's notes and final summary; do not invent progress.
+7. **Sprints.** A sprint is a Backlog.md milestone. List with `backlog milestone list --plain`; create tasks inside one with `backlog task create ... -m "<sprint>"`, move with `backlog task edit <id> -m "<sprint>"`. When asked to work on a sprint, list it with `backlog task list -m "<sprint>" --plain` and take tasks in order; do not create sprints unless the user asks.

@@ -19,8 +19,10 @@ Always-on service on macOS: see `docs/operations.md`.
 
 1. Open `http://127.0.0.1:4880/`, paste the absolute path of a repo, press **Add project**. Nothing is discovered or added automatically.
 2. Not initialized yet: enter a letters-only task prefix and press **Init Backlog**. This runs `backlog init --defaults`, creates `AGENTS.md` and `CLAUDE.md`, and appends the shared task protocol from `templates/agent-protocol.md`.
-3. Press **Start dashboard**, then **Open dashboard** for that project's own board.
-4. **Stop** ends only the dashboard process. **Remove** drops the project from AI Hub and stops its dashboard; repo files are kept.
+3. Each initialized card has a **Sprints** section: type a name (and optional due date), press **Add sprint**. A sprint is a Backlog.md milestone, so it shows on that project's own dashboard. Open tasks without a sprint are listed under **Not in a sprint** with a dropdown to assign each one; the same can be done with `backlog task edit <id> -m "<sprint>"`.
+   If the card shows "Agent protocol ... out of date", press **Update** to rewrite the AI Hub block in `AGENTS.md` / `CLAUDE.md` (needed once per existing project after upgrading AI Hub).
+4. Press **Start dashboard**, then **Open dashboard** for that project's own board.
+5. **Stop** ends only the dashboard process. **Remove** drops the project from AI Hub and stops its dashboard; repo files are kept.
 
 ## How it works
 

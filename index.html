@@ -42,7 +42,21 @@ button.danger:hover:not(:disabled) { border-color:var(--err); color:var(--err); 
 .actions a.open { text-decoration:none; color:#04141f; background:var(--accent); border-radius:6px; padding:7px 12px; font-weight:600; }
 .init { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
 .init input { width:110px; }
+.sprints { font-size:12px; display:flex; flex-direction:column; gap:4px; }
+.sprints .head { color:var(--muted); }
+.sprint { display:flex; justify-content:space-between; gap:8px; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:4px 8px; }
+.sprint.completed { opacity:.6; }
+.sprint span:first-child { overflow-wrap:anywhere; }
+.sprint span:last-child { color:var(--muted); white-space:nowrap; }
+.sprintform { display:flex; gap:6px; flex-wrap:wrap; }
+.sprintform input[type=text] { flex:1 1 120px; min-width:0; } .sprintform input[type=date] { flex:0 1 135px; }
 .empty { color:var(--muted); text-align:center; padding:60px 0; border:1px dashed var(--line); border-radius:10px; }
+.unplanned { font-size:12px; display:flex; flex-direction:column; gap:4px; }
+.unplanned .head { color:var(--muted); }
+.utask { display:flex; justify-content:space-between; gap:8px; align-items:center; }
+.utask span { overflow-wrap:anywhere; min-width:0; }
+.utask select { flex:0 0 auto; max-width:50%; font:inherit; font-size:12px; color:var(--fg); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:3px 6px; }
+.notice { font-size:12px; color:var(--warn); display:flex; justify-content:space-between; gap:8px; align-items:center; border:1px solid var(--warn); border-radius:6px; padding:6px 8px; }
 </style>
 </head>
 <body>
@@ -163,6 +177,56 @@ function statusBadge(project) {
   return el("span", { className: project.running ? "badge on" : "badge", textContent: project.running ? `Running :${project.port}` : "Stopped" });
 }
 
+function sprintSection(project) {
+  const summary = project.summary;
+  const wrap = el("div", { className: "sprints" }, [el("div", { className: "head", textContent: "Sprints" })]);
+  if (summary.sprintsError) wrap.append(el("div", { className: "err", textContent: summary.sprintsError }));
+  for (const sprint of summary.sprints || []) {
+    const meta = `${sprint.done}/${sprint.total} done${sprint.due ? `, due ${sprint.due}` : ""}`;
+    wrap.append(el("div", { className: `sprint ${sprint.completed ? "completed" : ""}` }, [
+      el("span", { textContent: sprint.title }),
+      el("span", { textContent: sprint.completed ? `${meta} (completed)` : meta }),
+    ]));
+  }
+  const name = el("input", { type: "text", placeholder: "New sprint name", maxLength: 80, ariaLabel: "Sprint name", required: true });
+  const due = el("input", { type: "date", ariaLabel: "Sprint due date" });
+  const add = el("button", { type: "submit", textContent: "Add sprint", disabled: busy.has(project.id) });
+  const form = el("form", { className: "sprintform" }, [name, due, add]);
+  form.onsubmit = (event) => {
+    event.preventDefault();
+    act(project.id, "Sprint added", () => api("POST", `/api/projects/${project.id}/sprints`, { name: name.value, dueDate: due.value }));
+  };
+  wrap.append(form);
+  return wrap;
+}
+
+function unplannedSection(project) {
+  const summary = project.summary;
+  const open = (summary.sprints || []).filter((sprint) => !sprint.completed);
+  if (!summary.unplannedTotal || !open.length) return null;
+  const wrap = el("div", { className: "unplanned" }, [el("div", { className: "head", textContent: `Not in a sprint (${summary.unplannedTotal})` })]);
+  for (const task of summary.unplanned) {
+    const select = el("select", { ariaLabel: `Assign ${task.id} to a sprint`, disabled: busy.has(project.id) });
+    select.append(el("option", { value: "", textContent: "Assign to sprint…" }));
+    for (const sprint of open) select.append(el("option", { value: sprint.id, textContent: sprint.title }));
+    select.onchange = () => {
+      if (select.value) act(project.id, `${task.id} assigned`, () => api("POST", `/api/projects/${project.id}/assign`, { taskId: task.id, sprintId: select.value }));
+    };
+    wrap.append(el("div", { className: "utask" }, [el("span", { textContent: `${task.id} ${task.title}` }), select]));
+  }
+  if (summary.unplannedTotal > summary.unplanned.length) {
+    wrap.append(el("div", { className: "head", textContent: `+${summary.unplannedTotal - summary.unplanned.length} more; assign with the backlog CLI or dashboard` }));
+  }
+  return wrap;
+}
+
+function protocolNotice(project) {
+  if (!project.protocolStale) return null;
+  const button = el("button", { textContent: "Update", disabled: busy.has(project.id) });
+  button.onclick = () => act(project.id, "Agent protocol updated", () => api("POST", `/api/projects/${project.id}/protocol`));
+  return el("div", { className: "notice" }, [el("span", { textContent: "Agent protocol in AGENTS.md / CLAUDE.md is out of date" }), button]);
+}
+
 function card(project) {
   const node = el("div", { className: `card ${project.exists ? "" : "missing"}` });
   node.append(el("div", { className: "top" }, [
@@ -175,6 +239,11 @@ function card(project) {
     node.append(columnChips(project.summary));
     const now = inProgressList(project.summary);
     if (now) node.append(now);
+    node.append(sprintSection(project));
+    const unplanned = unplannedSection(project);
+    if (unplanned) node.append(unplanned);
+    const notice = protocolNotice(project);
+    if (notice) node.append(notice);
   }
   node.append(actionRow(project));
   return node;
@@ -214,7 +283,7 @@ document.getElementById("addForm").onsubmit = async (event) => {
 };
 
 refresh();
-setInterval(() => { if (!busy.size && !document.hidden) refresh(); }, 5000);
+setInterval(() => { if (!busy.size && !document.hidden && !(document.activeElement && grid.contains(document.activeElement) && /^(INPUT|SELECT)$/.test(document.activeElement.tagName))) refresh(); }, 5000);
 </script>
 </body>
 </html>

@@ -149,16 +149,53 @@ async function stopDashboard(project) {
 	if (owner && owner.command.startsWith("backlog")) process.kill(owner.pid, "SIGTERM");
 }
 
+const UNPLANNED_LIMIT = 50;
+
 function summarizeTasks(tasks) {
 	const counts = {};
 	const inProgress = [];
+	const unplanned = [];
+	let unplannedTotal = 0;
 	for (const task of tasks) {
 		counts[task.status] = (counts[task.status] || 0) + 1;
 		if (/progress/i.test(task.status)) {
 			inProgress.push({ id: task.id, title: task.title, priority: task.priority });
 		}
+		if (!task.milestone && !/done/i.test(task.status)) {
+			unplannedTotal += 1;
+			if (unplanned.length < UNPLANNED_LIMIT) unplanned.push({ id: task.id, title: task.title });
+		}
 	}
-	return { counts, total: tasks.length, inProgress };
+	return { counts, total: tasks.length, inProgress, unplanned, unplannedTotal };
+}
+
+// Backlog.md has no JSON output for milestones; parse the plain text and fail loudly if it does not
+// match the section counts it prints, so a format change surfaces as an error instead of an empty list.
+function parseSprints(output) {
+	const sprints = [];
+	const declared = { Active: null, Completed: null };
+	const found = { Active: 0, Completed: 0 };
+	let section = null;
+	for (const line of output.split("\n")) {
+		const header = /^(Active|Completed) milestones \((\d+)\):/.exec(line);
+		if (header) {
+			section = header[1];
+			declared[section] = Number(header[2]);
+			continue;
+		}
+		const match = /^\s+(m-\d+): (.+) \((\d+)\/(\d+) done(?:, due (\d{4}-\d{2}-\d{2}))?\)$/.exec(line);
+		if (!match || !section) continue;
+		found[section] += 1;
+		sprints.push({ id: match[1], title: match[2], done: Number(match[3]), total: Number(match[4]), due: match[5] || null, completed: section === "Completed" });
+	}
+	if (declared.Active === null || declared.Completed === null || found.Active !== declared.Active || found.Completed !== declared.Completed) {
+		throw new Error("Unrecognized `backlog milestone list` output; Backlog.md format may have changed");
+	}
+	return sprints;
+}
+
+async function listSprints(project) {
+	return parseSprints(await runBacklog(project.path, ["milestone", "list", "--show-completed", "--plain"], SUMMARY_TIMEOUT_MS));
 }
 
 async function loadSummary(project) {
@@ -171,15 +208,38 @@ async function loadSummary(project) {
 	} catch (error) {
 		value = { error: error.message };
 	}
+	if (!value.error) {
+		try {
+			value.sprints = await listSprints(project);
+		} catch (error) {
+			value.sprints = [];
+			value.sprintsError = error.message;
+		}
+	}
 	summaryCache.set(project.id, { at: Date.now(), value });
 	return value;
+}
+
+function protocolBlock() {
+	const template = fs.readFileSync(path.join(HERE, "templates", "agent-protocol.md"), "utf8").trim();
+	return `${PROTOCOL_START}\n${template}\n${PROTOCOL_END}`;
+}
+
+// True when an existing AGENTS.md / CLAUDE.md lacks the current protocol block.
+function protocolStale(dir) {
+	const block = protocolBlock();
+	return ["AGENTS.md", "CLAUDE.md"].some((file) => {
+		const target = path.join(dir, file);
+		return fs.existsSync(target) && !fs.readFileSync(target, "utf8").includes(block);
+	});
 }
 
 async function describeProject(project) {
 	const info = inspectDirectory(project.path);
 	const running = info.exists && (await isPortOpen(project.port));
 	const summary = info.initialized ? await loadSummary(project) : null;
-	return { ...project, ...info, running, url: `http://127.0.0.1:${project.port}/`, summary };
+	const stale = info.initialized && protocolStale(project.path);
+	return { ...project, ...info, running, url: `http://127.0.0.1:${project.port}/`, summary, protocolStale: stale };
 }
 
 function validateProjectPath(rawPath) {
@@ -213,8 +273,7 @@ async function removeProject(id) {
 }
 
 function applyProtocol(dir) {
-	const template = fs.readFileSync(path.join(HERE, "templates", "agent-protocol.md"), "utf8").trim();
-	const block = `${PROTOCOL_START}\n${template}\n${PROTOCOL_END}`;
+	const block = protocolBlock();
 	const pattern = new RegExp(`${PROTOCOL_START}[\\s\\S]*?${PROTOCOL_END}`);
 	for (const file of ["AGENTS.md", "CLAUDE.md"]) {
 		const target = path.join(dir, file);
@@ -246,13 +305,55 @@ async function initProject(id, body) {
 	summaryCache.delete(id);
 }
 
+async function createSprint(id, body) {
+	const name = typeof body.name === "string" ? body.name.trim() : "";
+	if (!name || name.length > 80 || /[\r\n]/.test(name) || name.startsWith("-")) {
+		throw new HttpError(400, "name must be 1-80 characters, one line, not starting with '-'");
+	}
+	const dueDate = typeof body.dueDate === "string" ? body.dueDate.trim() : "";
+	if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) throw new HttpError(400, "dueDate must be YYYY-MM-DD");
+	const project = findProject(readRegistry(), id);
+	if (!inspectDirectory(project.path).initialized) throw new HttpError(409, "Project is not initialized");
+	const args = ["milestone", "add", name];
+	if (dueDate) args.push("--due-date", dueDate);
+	try {
+		await runBacklog(project.path, args, 15000);
+	} catch (error) {
+		throw new HttpError(400, error.message);
+	}
+	summaryCache.delete(id);
+}
+
+async function assignTask(id, body) {
+	const taskId = typeof body.taskId === "string" ? body.taskId.trim() : "";
+	if (!/^[A-Za-z]+-\d+(\.\d+)*$/.test(taskId)) throw new HttpError(400, "taskId is invalid");
+	const sprintId = typeof body.sprintId === "string" ? body.sprintId.trim() : "";
+	if (sprintId && !/^m-\d+$/.test(sprintId)) throw new HttpError(400, "sprintId must look like m-0, or be empty to clear");
+	const project = findProject(readRegistry(), id);
+	if (!inspectDirectory(project.path).initialized) throw new HttpError(409, "Project is not initialized");
+	// `backlog task edit -m` accepts unknown milestones silently, so check the sprint exists first.
+	if (sprintId && !(await listSprints(project)).some((sprint) => sprint.id === sprintId)) throw new HttpError(404, "Sprint not found");
+	try {
+		await runBacklog(project.path, ["task", "edit", taskId, ...(sprintId ? ["-m", sprintId] : ["--clear-milestone"])], 15000);
+	} catch (error) {
+		throw new HttpError(400, error.message);
+	}
+	summaryCache.delete(id);
+}
+
+function refreshProtocol(id) {
+	const project = findProject(readRegistry(), id);
+	if (!inspectDirectory(project.path).initialized) throw new HttpError(409, "Project is not initialized");
+	applyProtocol(project.path);
+}
+
 async function route(method, pathname, body) {
 	if (method === "GET" && pathname === "/api/projects") {
 		const registry = readRegistry();
 		return { projects: await Promise.all(registry.projects.map(describeProject)) };
 	}
 	if (method === "POST" && pathname === "/api/projects") return { project: await addProject(body) };
-	const match = /^\/api\/projects\/([a-f0-9]{8})(?:\/(start|stop|init))?$/.exec(pathname);
+	const match = /^\/api\/projects\/([a-f0-9]{8})(?:\/(start|stop|init|sprints|assign|protocol))?$/.exec(pathname);
 	if (!match) throw new HttpError(404, "Not found");
 	const [, id, action] = match;
 	if (method === "DELETE" && !action) return removeProject(id).then(() => ({ ok: true }));
@@ -265,6 +366,9 @@ async function route(method, pathname, body) {
 	}
 	if (action === "stop") await stopDashboard(project);
 	if (action === "init") await initProject(id, body);
+	if (action === "sprints") await createSprint(id, body);
+	if (action === "assign") await assignTask(id, body);
+	if (action === "protocol") refreshProtocol(id);
 	return { ok: true, url: `http://127.0.0.1:${project.port}/` };
 }
 
