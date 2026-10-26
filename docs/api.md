@@ -4,7 +4,7 @@ Local only. Requests need `Host: 127.0.0.1:<port>` or `localhost:<port>`. Non-GE
 
 | Method | Path | Body | Result |
 |---|---|---|---|
-| GET | `/api/projects` | | `{ projects: [{ id, name, path, port, exists, initialized, isGit, running, url, summary, protocolStale }] }` |
+| GET | `/api/projects` | | `{ projects: [{ id, name, path, port, exists, initialized, isGit, running, url, summary, currentPhase, phaseProgress, gateStatus, protocolStale }] }` |
 | POST | `/api/projects` | `{ path, name? }` | `{ project }`. 400 non-absolute or missing path, 409 duplicate |
 | DELETE | `/api/projects/:id` | | Stops dashboard, removes registry entry only |
 | POST | `/api/projects/:id/init` | `{ prefix }` | Runs `backlog init`, applies agent protocol. 400 bad prefix, 409 already initialized |
@@ -12,10 +12,23 @@ Local only. Requests need `Host: 127.0.0.1:<port>` or `localhost:<port>`. Non-GE
 | POST | `/api/projects/:id/stop` | | Stops dashboard |
 | POST | `/api/projects/:id/sprints` | `{ name, dueDate? }` | Runs `backlog milestone add`. 400 bad name or `dueDate` (`YYYY-MM-DD`) or duplicate name, 409 not initialized |
 | POST | `/api/projects/:id/assign` | `{ taskId, sprintId }` | Runs `backlog task edit <taskId> -m <sprintId>`. Empty `sprintId` clears the sprint. 400 bad ids or unknown task, 404 unknown sprint, 409 not initialized |
-| POST | `/api/projects/:id/protocol` | | Rewrites the AI Hub block in `AGENTS.md` / `CLAUDE.md` from the current template. 409 not initialized |
+| POST | `/api/projects/:id/protocol` | | Creates/updates the AI Hub block in `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` from the current template. 409 not initialized |
+| GET | `/api/projects/:id/board` | | `{ project, statuses, modelTiers, closedEnabled, tasks: [{ id, title, status, priority, type, labels, modelTier, assignees, milestone, dueDate, updatedAt }], sprints, sprintsError }`. 409 not initialized |
+| GET | `/api/projects/:id/metrics` | | `{ phases: [{ milestoneId, phase, done, total, percent, completed, dueDate, duration, gate }], velocity, trend, gatePassRate, generatedAt }`. Add `?format=csv` to download the same `phases` rows as CSV. 409 not initialized |
+| POST | `/api/projects/:id/move` | `{ taskId, status }` | Runs `backlog task edit <taskId> -s <status>`. `status` is matched case-insensitively against configured statuses. 400 bad id or unknown status, 409 not initialized |
+| POST | `/api/projects/:id/tasks` | `{ title, modelTier, sprintId? }` | Runs `backlog task create` with exactly one routing tier, optionally into a sprint. `modelTier`: `dev-high`, `dev-medium`, `dev-low`, or `art`. 400 bad input, 404 unknown sprint, 409 not initialized |
+| POST | `/api/projects/:id/tier` | `{ taskId, modelTier }` | Replaces the existing routing-tier label while preserving ordinary labels. 400 bad input, 404 unknown task, 409 not initialized |
+| POST | `/api/projects/:id/closed` | | Adds `"Closed"` to the inline `statuses:` list in the repo's `backlog/config.yml` (the CLI refuses `config set statuses`). 409 if already enabled or `statuses` is not an inline list |
 
-`summary` is `{ counts: { <status>: n }, total, inProgress: [{ id, title, priority }], unplanned: [{ id, title }], unplannedTotal, sprints: [{ id, title, done, total, due, completed }] }`, or `{ error }` when `backlog task list --json` fails. `unplanned` is non-Done tasks with no sprint, capped at 50; `unplannedTotal` is the full count. If `backlog milestone list` fails or its output does not match the counts it prints, `sprints` is `[]` and `sprintsError` holds the message. It is `null` for uninitialized projects.
 
-`protocolStale` is true when `AGENTS.md` or `CLAUDE.md` exists but does not contain the current protocol block.
+`currentPhase` (string or null) is the title of the active milestone when tasks are in progress, or the earliest not-yet-completed milestone. `phaseProgress` is `{ total, done, percent }` for that phase or null if no phase. `gateStatus` is one of `not-started`, `in-progress`, `completed`, `approved`, `in-progress` (when gate decision is rework); derived from task counts and the latest gate decision record in `backlog/phase-gates.json`.
 
-A sprint is a Backlog.md milestone (`backlog/milestones/m-N - <name>.md`). `completed` is true when every task in it is Done and it has at least one task. The server checks that `sprintId` exists before assigning because `backlog task edit -m` accepts unknown milestones without error.
+`metrics.phases` is sprint/milestone data ordered by milestone number, each enriched with `duration: { startedAt, estimatedDays, actualDays, ongoing } | null` (estimated from the milestone's due date when set; actual from the earliest task's `createdAt` to the latest finished task's `updatedAt`, or now while the phase is still open) and `gate: { decision, date, reviewer } | null` (the latest record for that milestone in `backlog/phase-gates.json`, written by `bin/backlog-phase.mjs gate --approve|--rework`; absent file means no gate decisions yet). `velocity` is the done/total per phase with at least one ticket. `trend` is the last 3 such phases' completion percent. `gatePassRate` is `{ approved, rework, percent } | null`, null when no phase has a gate decision.
+
+`protocolStale` is true when any of `AGENTS.md`, `CLAUDE.md`, or `GEMINI.md` is missing or does not contain the current protocol block.
+
+A sprint is a Backlog.md milestone (`backlog/milestones/m-N - <name>.md`). The server checks that `sprintId` exists before assigning because `backlog task edit -m` accepts unknown milestones without error.
+
+**Closed counts as finished.** Backlog.md only counts `Done` toward milestone progress. AI Hub recomputes `done`, `total` and `completed` for every sprint from the task list, treating `Done` and `Closed` as finished, so sprint progress in AI Hub can be higher than `backlog milestone list`. Closed tasks are also left out of `unplanned`.
+
+Model tiers are labels persisted by Backlog.md, not AI Hub-only state. See [`model-routing.md`](model-routing.md).

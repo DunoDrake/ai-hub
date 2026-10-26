@@ -3,75 +3,343 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050a14">
 <title>AI Hub</title>
+<script>document.documentElement.dataset.theme=(function(){try{var t=localStorage.getItem("ai-hub-theme");if(t)return t}catch(e){}return window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"})()</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root { --bg:#0e1116; --panel:#161b22; --line:#2a313c; --fg:#e6edf3; --muted:#8b949e; --accent:#4cc2ff; --ok:#3fb950; --warn:#d29922; --err:#f85149; }
+:root {
+  --bg:#f8fafc; --grid:#e2e8f0; --text:#0f172a; --muted:#64748b; --dim:#64748b; --panel:#ffffff;
+  --pb:#e2e8f0; --arrow:#94a3b8; --row:#f1f5f9; --ok:#059669; --run:#0891b2; --err:#e11d48;
+  --accent:#4d7c0f; --accent-text:#ffffff; --warn:#d97706; --claude:#d97757; --gpt:#059669;
+  --gemini:#7c3aed; --deepseek:#0891b2; --fg:var(--text); --line:var(--pb); --line-strong:var(--arrow);
+  --surface:var(--row); --accent-ink:var(--accent-text); --r:3px; --r-lg:3px; color-scheme:light;
+}
+[data-theme="dark"] {
+  --bg:#050a14; --grid:#12203a; --text:#e6efe0; --muted:#8a9aa6; --dim:#7a8a96; --panel:rgba(10,18,32,.72);
+  --pb:rgba(190,255,120,.16); --arrow:#4b5b6b; --row:rgba(190,255,120,.045); --ok:#b6ff6a;
+  --run:#7dd3fc; --err:#fb7185; --accent:#b6ff6a; --accent-text:#0a1400; --warn:#fbbf24;
+  --claude:#fb8f67; --gpt:#34d399; --gemini:#a78bfa; --deepseek:#22d3ee;
+  --fg:var(--text); --line:var(--pb); --line-strong:var(--arrow); --surface:var(--row); --accent-ink:var(--accent-text); color-scheme:dark;
+}
 * { box-sizing:border-box; }
-body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-header { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; padding:14px 24px; border-bottom:1px solid var(--line); }
-header h1 { font-size:16px; margin:0; letter-spacing:.3px; }
-header .sub { color:var(--muted); font-size:12px; }
-main { max-width:1100px; margin:0 auto; padding:20px 24px 60px; }
-form.add { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px; }
-input, button { font:inherit; color:var(--fg); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:7px 10px; }
-input:focus-visible, button:focus-visible, a:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
-input.path { flex:1 1 360px; } input.name { flex:0 1 200px; }
-button { cursor:pointer; } button:hover:not(:disabled) { border-color:var(--accent); }
-button:disabled { opacity:.5; cursor:default; }
-button.primary { background:var(--accent); color:#04141f; border-color:var(--accent); font-weight:600; }
-button.danger:hover:not(:disabled) { border-color:var(--err); color:var(--err); }
-.msg { min-height:20px; margin:-8px 0 12px; font-size:13px; color:var(--err); }
+[hidden] { display:none !important; }
+html { font-size:16px; -webkit-font-smoothing:antialiased; }
+body { margin:0; min-height:100vh; color:var(--text); background-color:var(--bg); font:13px/1.45 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,"DejaVu Sans Mono",monospace;
+  background-image:linear-gradient(color-mix(in srgb,var(--grid) 55%,transparent) 1px,transparent 1px),linear-gradient(90deg,color-mix(in srgb,var(--grid) 55%,transparent) 1px,transparent 1px); background-size:32px 32px; background-position:-1px -1px; background-attachment:fixed; }
+[data-theme="dark"] body { background-image:radial-gradient(1200px 600px at 78% -10%,rgba(40,80,190,.38),transparent 60%),radial-gradient(800px 500px at 10% 110%,rgba(20,50,130,.35),transparent 60%),linear-gradient(color-mix(in srgb,var(--grid) 30%,transparent) 1px,transparent 1px),linear-gradient(90deg,color-mix(in srgb,var(--grid) 30%,transparent) 1px,transparent 1px); background-size:auto,auto,32px 32px,32px 32px; background-repeat:no-repeat,no-repeat,repeat,repeat; }
+button, input, select { font:inherit; }
+button, input, select, a { -webkit-tap-highlight-color:transparent; }
+button, input, select { color:var(--text); background:var(--panel); border:1px solid var(--pb); border-radius:3px; padding:6px 9px; }
+button { cursor:pointer; font-size:10.5px; font-weight:500; text-transform:uppercase; letter-spacing:.07em; }
+button:hover:not(:disabled), select:hover, input:hover { border-color:var(--arrow); }
+button:disabled { opacity:.45; cursor:default; }
+button.primary { background:var(--accent); color:var(--accent-text); border-color:var(--accent); font-weight:700; }
+button.primary:hover:not(:disabled) { filter:brightness(1.08); border-color:var(--accent); }
+button.danger { color:var(--muted); }
+button.danger:hover:not(:disabled) { color:var(--err); border-color:var(--err); }
+input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible, summary:focus-visible { outline:2px solid var(--run); outline-offset:2px; }
+
+header { min-height:48px; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:16px; padding:8px max(16px, calc((100vw - 1560px)/2)); background:transparent; }
+.brandmark { width:18px; height:18px; display:grid; place-items:center; border:0; color:var(--accent); border-radius:0; font-size:0; }
+.brandmark::before { content:"✦"; font-size:17px; }
+.brandcopy { display:flex; flex-direction:row; align-items:center; gap:12px; min-width:0; }
+header h1 { margin:0; font-size:15px; line-height:1.15; letter-spacing:-.01em; white-space:nowrap; }
+header .sub { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.theme-btn { justify-self:end; border:1px solid var(--pb); background:var(--panel); border-radius:3px; padding:5px 10px; }
+.sub { color:var(--muted); font-size:11px; }
+main { max-width:1560px; margin:0 auto; padding:8px 16px 48px; }
+main.wide { max-width:1920px; }
+
+.add { display:grid; grid-template-columns:minmax(280px,1fr) minmax(160px,240px) auto; gap:0; padding:0; margin-bottom:10px; background:var(--panel); border:1px solid var(--pb); border-left:2px solid var(--accent); border-radius:3px; backdrop-filter:blur(12px); }
+.add input { background:transparent; border:0; border-right:1px solid var(--pb); border-radius:0; }
+.add button { margin:5px; }
+.model-rail { display:flex; flex-wrap:wrap; gap:0; margin:0 0 10px; background:var(--panel); border:1px solid var(--pb); border-left:2px solid var(--accent); border-radius:3px; backdrop-filter:blur(12px); }
+.provider-badge { min-width:0; display:inline-flex; align-items:center; gap:7px; padding:6px 10px; border:0; border-left:1px solid var(--pb); border-radius:0; color:var(--text); background:transparent; font-size:10px; line-height:1; white-space:nowrap; text-transform:uppercase; letter-spacing:.06em; }
+.provider-badge:first-child { border-left:0; }
+.provider-badge .provider { font-weight:600; }
+.provider-badge .level { color:var(--muted); }
+.marks { display:inline-flex; align-items:center; gap:5px; }
+.provider-icon { display:inline-grid; min-width:14px; height:14px; place-items:center; font-size:9px; font-weight:700; letter-spacing:0; text-transform:none; }
+.provider-badge.claude { color:var(--claude); }
+.provider-badge.gpt { color:var(--gpt); }
+.provider-badge.deepseek { color:var(--deepseek); }
+.provider-badge.art { color:var(--gemini); }
+.provider-badge.art .provider-icon.openai { color:var(--gpt); }
+.provider-badge.missing { color:var(--warn); }
+.provider-badge.missing .mark { display:inline-grid; width:14px; height:14px; place-items:center; background:var(--warn); color:#2a1b00; font-weight:700; }
+@supports ((mask-image:url("")) or (-webkit-mask-image:url(""))) {
+  .provider-icon { width:14px; min-width:14px; background:currentColor; font-size:0; mask:center/contain no-repeat; -webkit-mask:center/contain no-repeat; }
+  .provider-icon.claude { mask-image:url("/assets/providers/claude.svg"); -webkit-mask-image:url("/assets/providers/claude.svg"); }
+  .provider-icon.openai { mask-image:url("/assets/providers/openai.svg"); -webkit-mask-image:url("/assets/providers/openai.svg"); }
+  .provider-icon.gemini { mask-image:url("/assets/providers/gemini.svg"); -webkit-mask-image:url("/assets/providers/gemini.svg"); }
+  .provider-icon.deepseek { mask-image:url("/assets/providers/deepseek.svg"); -webkit-mask-image:url("/assets/providers/deepseek.svg"); }
+}
+
+.msg { min-height:18px; margin:0 0 6px; font-size:11px; color:var(--err); }
 .msg.ok { color:var(--ok); }
-.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap:14px; }
-.card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:10px; }
-.card.missing { border-color:var(--err); }
-.top { display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
-.title { font-weight:600; font-size:15px; overflow-wrap:anywhere; }
-.path { color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
-.badge { font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted); white-space:nowrap; }
+.grid { display:flex; flex-direction:column; gap:10px; }
+.card { background:var(--panel); border:1px solid var(--pb); border-left:2px solid var(--accent); border-radius:3px; overflow:hidden; backdrop-filter:blur(12px); }
+.card.missing { border-left-color:var(--err); }
+.card-main { min-height:76px; display:grid; grid-template-columns:minmax(220px,280px) minmax(220px,1fr) auto; align-items:center; gap:18px; padding:10px 12px; }
+.identity { min-width:0; }
+.identity-row { display:flex; align-items:center; gap:8px; margin-bottom:2px; }
+.title { min-width:0; font-weight:700; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.path { color:var(--dim); font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.badge { font-size:9.5px; padding:1px 6px; border-radius:999px; border:1px solid var(--pb); color:var(--muted); white-space:nowrap; text-transform:uppercase; letter-spacing:.05em; }
 .badge.on { color:var(--ok); border-color:var(--ok); }
 .badge.bad { color:var(--err); border-color:var(--err); }
-.cols { display:flex; flex-wrap:wrap; gap:6px; }
-.col { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:4px 8px; font-size:12px; }
-.col b { font-size:15px; margin-right:4px; }
-.col.prog b { color:var(--accent); } .col.done b { color:var(--ok); }
-.now { font-size:12px; color:var(--muted); }
-.now li { margin-left:16px; overflow-wrap:anywhere; } .now ul { margin:4px 0 0; padding:0; }
-.err { color:var(--err); font-size:12px; overflow-wrap:anywhere; }
-.actions { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:auto; }
-.actions a.open { text-decoration:none; color:#04141f; background:var(--accent); border-radius:6px; padding:7px 12px; font-weight:600; }
-.init { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
-.init input { width:110px; }
-.sprints { font-size:12px; display:flex; flex-direction:column; gap:4px; }
-.sprints .head { color:var(--muted); }
-.sprint { display:flex; justify-content:space-between; gap:8px; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:4px 8px; }
-.sprint.completed { opacity:.6; }
-.sprint span:first-child { overflow-wrap:anywhere; }
+.badge.gate-not-started { color:var(--muted); }
+.badge.gate-in-progress { color:var(--run); border-color:var(--run); }
+.badge.gate-completed { color:var(--ok); border-color:var(--ok); }
+.badge.gate-approved { color:var(--accent-text); border-color:var(--accent); background:var(--accent); }
+.activity { min-width:0; display:flex; flex-direction:column; gap:5px; }
+.phase { min-width:0; display:flex; flex-direction:column; gap:3px; }
+.phase-head { display:flex; align-items:center; justify-content:space-between; gap:6px; }
+.phase-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10.5px; font-weight:600; color:var(--text); }
+.phase-bar { height:4px; border-radius:999px; background:var(--pb); overflow:hidden; }
+.phase-fill { height:100%; background:var(--run); border-radius:999px; }
+button.phase-open { border-color:var(--accent); color:var(--accent); }
+.cols { display:flex; flex-wrap:wrap; gap:0; }
+.col { display:inline-flex; align-items:baseline; gap:4px; color:var(--muted); background:transparent; border:0; border-left:1px solid var(--pb); border-radius:0; padding:2px 10px; font-size:10px; text-transform:uppercase; letter-spacing:.05em; }
+.col:first-child { border-left:0; padding-left:0; }
+.col b { color:var(--text); font-size:14px; font-variant-numeric:tabular-nums; }
+.col.prog b { color:var(--run); } .col.done b { color:var(--ok); }
+.now { min-width:0; color:var(--muted); font-size:10.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.now strong { color:var(--text); }
+.actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; align-items:center; }
+.actions a.open { text-decoration:none; color:var(--accent-text); background:var(--accent); border:1px solid var(--accent); border-radius:3px; padding:6px 9px; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; }
+button.board-open { border-color:var(--run); color:var(--run); }
+.init { display:flex; gap:6px; align-items:center; }
+.init input { width:112px; }
+
+.card-detail { display:flex; flex-wrap:wrap; border-top:1px solid var(--pb); background:var(--row); }
+.drawer { flex:1 1 280px; border-right:1px solid var(--pb); }
+.drawer:last-child { border-right:0; }
+.drawer summary { list-style:none; cursor:pointer; padding:7px 12px; color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.08em; user-select:none; }
+.drawer summary::-webkit-details-marker { display:none; }
+.drawer summary::before { content:""; display:inline-block; width:2px; height:10px; margin-right:8px; vertical-align:-1px; background:var(--accent); }
+.drawer[open] summary::before { content:""; }
+.drawer-body { display:flex; flex-direction:column; gap:6px; padding:0 16px 12px; }
+.sprint { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; padding:5px 0; border-bottom:1px solid var(--line); font-size:12px; }
+.sprint.completed { opacity:.55; }
+.sprint span:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .sprint span:last-child { color:var(--muted); white-space:nowrap; }
-.sprintform { display:flex; gap:6px; flex-wrap:wrap; }
-.sprintform input[type=text] { flex:1 1 120px; min-width:0; } .sprintform input[type=date] { flex:0 1 135px; }
-.empty { color:var(--muted); text-align:center; padding:60px 0; border:1px dashed var(--line); border-radius:10px; }
-.unplanned { font-size:12px; display:flex; flex-direction:column; gap:4px; }
-.unplanned .head { color:var(--muted); }
-.utask { display:flex; justify-content:space-between; gap:8px; align-items:center; }
-.utask span { overflow-wrap:anywhere; min-width:0; }
-.utask select { flex:0 0 auto; max-width:50%; font:inherit; font-size:12px; color:var(--fg); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:3px 6px; }
-.notice { font-size:12px; color:var(--warn); display:flex; justify-content:space-between; gap:8px; align-items:center; border:1px solid var(--warn); border-radius:6px; padding:6px 8px; }
+.sprintform { display:grid; grid-template-columns:minmax(120px,1fr) 138px auto; gap:6px; margin-top:5px; }
+.sprintform input, .sprintform button { padding:6px 8px; font-size:12px; }
+.utask { display:grid; grid-template-columns:minmax(0,1fr) minmax(130px,42%); gap:8px; align-items:center; font-size:12px; }
+.utask span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.utask select { min-width:0; font-size:11px; padding:5px 7px; }
+.notice { margin:0 16px 12px; font-size:12px; color:var(--warn); display:flex; justify-content:space-between; gap:8px; align-items:center; border:1px solid color-mix(in srgb, var(--warn), transparent 45%); border-radius:var(--r); padding:7px 9px; }
+.err { color:var(--err); font-size:12px; overflow-wrap:anywhere; }
+.empty { color:var(--muted); text-align:center; padding:64px 20px; border:1px dashed var(--line); border-radius:var(--r-lg); }
+
+.btop { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:12px; margin-bottom:10px; min-height:40px; }
+.btop h2 { margin:0; font-size:13px; font-weight:600; overflow-wrap:anywhere; }
+#boardBack { color:var(--run); background:var(--panel); }
+.phase-metrics { border:1px solid var(--pb); border-left:2px solid var(--accent); border-radius:3px; background:var(--panel); backdrop-filter:blur(12px); padding:10px 12px; margin-bottom:10px; display:flex; flex-direction:column; gap:8px; }
+.phase-metrics-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.phase-metrics-head h3 { margin:0; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); }
+.phase-metrics-head .exports { display:flex; gap:10px; }
+.phase-metrics-head .exports a { font-size:11px; color:var(--run); text-decoration:none; }
+.phase-metrics-head .exports a:hover { text-decoration:underline; }
+.phase-metrics-empty { color:var(--muted); font-size:12px; }
+.phase-metrics-summary { display:flex; gap:14px; flex-wrap:wrap; font-size:11.5px; color:var(--muted); }
+.phase-metrics-summary b { color:var(--text); font-weight:600; }
+.phase-trend { display:flex; align-items:center; gap:5px; }
+.phase-trend .chip { padding:1px 6px; border-radius:2px; background:var(--row); font-weight:600; color:var(--text); }
+.phase-rows { display:flex; flex-direction:column; gap:5px; }
+.phase-row { display:grid; grid-template-columns:minmax(120px,1.2fr) minmax(70px,1fr) 56px minmax(150px,auto) 84px; gap:10px; align-items:center; font-size:11.5px; }
+.phase-row .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.phase-row .bar { height:6px; border-radius:3px; background:var(--row); overflow:hidden; }
+.phase-row .bar span { display:block; height:100%; background:var(--accent); }
+.phase-row.active .bar span { background:var(--run); }
+.phase-row .count { color:var(--muted); white-space:nowrap; }
+.phase-row .duration { color:var(--muted); white-space:nowrap; font-size:11px; }
+.phase-row .gate { justify-self:start; padding:1px 6px; border-radius:2px; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; }
+.phase-row .gate.approved { color:var(--ok); background:color-mix(in srgb, var(--ok) 16%, transparent); }
+.phase-row .gate.rework { color:var(--err); background:color-mix(in srgb, var(--err) 16%, transparent); }
+.phase-row .gate.none { color:var(--muted); background:var(--row); }
+@media (max-width:640px) {
+  .phase-row { grid-template-columns:minmax(0,1fr) 50px; grid-template-areas:"name gate" "bar bar" "count duration"; }
+  .phase-row .name { grid-area:name; }
+  .phase-row .gate { grid-area:gate; justify-self:end; }
+  .phase-row .bar { grid-area:bar; }
+  .phase-row .count { grid-area:count; }
+  .phase-row .duration { grid-area:duration; text-align:right; }
+}
+.btools { position:sticky; top:0; z-index:5; display:grid; grid-template-columns:minmax(220px,1fr) repeat(3,minmax(140px,auto)); gap:0; margin:0 0 10px; padding:0; background:var(--panel); border:1px solid var(--pb); border-left:2px solid var(--accent); border-radius:3px; backdrop-filter:blur(12px); }
+.btools input, .btools select { min-width:0; background:transparent; border:0; border-left:1px solid var(--pb); border-radius:0; }
+.btools input { border-left:0; }
+.status-tabs { display:none; }
+.board { display:grid; grid-template-columns:repeat(4,minmax(220px,1fr)); gap:10px; align-items:start; padding-bottom:12px; }
+.bcol { min-width:0; background:var(--panel); border:1px solid var(--pb); border-left:2px solid var(--accent); border-radius:3px; padding:0 8px 8px; display:flex; flex-direction:column; gap:7px; min-height:170px; backdrop-filter:blur(12px); }
+.bcol.over { border-color:var(--run); border-left-color:var(--run); background:color-mix(in srgb,var(--run) 12%,var(--panel)); }
+.bcol.ghost { background:var(--panel); border-style:dashed; color:var(--muted); font-size:11px; padding-top:8px; }
+.bcol.ghost p { margin:2px 0; }
+.bhead { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:0 -8px; padding:8px 10px; border-bottom:1px solid var(--pb); font-weight:500; font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
+.bhead span:first-child::before { content:""; display:inline-block; width:2px; height:10px; margin-right:8px; vertical-align:-1px; background:var(--accent); }
+.bhead .n { min-width:24px; text-align:right; font-weight:500; font-size:10px; color:var(--dim); background:transparent; border:0; border-radius:0; padding:0; }
+.bcol.fin .bhead { color:var(--ok); }
+.bcol.closed .bhead { color:var(--muted); }
+.ticket { position:relative; background:var(--row); border:1px solid var(--pb); border-left:2px solid transparent; border-radius:3px; padding:8px; display:flex; flex-direction:column; gap:6px; cursor:grab; }
+.ticket:hover, .ticket:focus-within { border-color:var(--arrow); }
+.ticket.dragging { opacity:.4; }
+.ticket.p-high { border-left-color:var(--err); } .ticket.p-medium { border-left-color:var(--warn); } .ticket.p-low { border-left-color:var(--run); }
+.bcol.closed .ticket, .bcol.fin .ticket { opacity:.78; }
+.ticket-head { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.tid { color:var(--dim); font-size:10px; font-weight:600; letter-spacing:.06em; }
+.tt { min-height:35px; font-size:12px; line-height:1.4; font-weight:600; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.tmeta { display:flex; flex-wrap:wrap; gap:4px; font-size:9.5px; }
+.tmeta span { border:1px solid var(--pb); border-radius:999px; padding:1px 6px; color:var(--muted); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tmeta .due.late { color:var(--err); border-color:var(--err); }
+.ticket-actions { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+.ticket-actions select { min-width:0; font-size:10px; padding:4px 5px; color:var(--muted); background:var(--panel); }
+.quick { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:5px; padding-top:1px; }
+.quick input { min-width:0; grid-column:1/-1; font-size:11px; padding:5px 7px; }
+.quick select { min-width:0; font-size:9.5px; padding:4px 5px; }
+.quick button { padding:4px 8px; }
+.more { font-size:10px; color:var(--muted); background:transparent; border-style:dashed; }
+.bempty { color:var(--muted); font-size:10.5px; text-align:center; padding:24px 0; }
+
+@media (max-width:900px) {
+  .card-main { grid-template-columns:minmax(180px,240px) 1fr; }
+  .actions { grid-column:1/-1; justify-content:flex-start; }
+  .btools { grid-template-columns:1fr 1fr; }
+  .board { grid-template-columns:repeat(4,minmax(250px,1fr)); overflow-x:auto; }
+}
+@media (max-width:640px) {
+  header { padding:8px 14px; min-height:46px; }
+  .brandmark { width:18px; height:18px; }
+  .brandcopy { gap:8px; }
+  header .sub { max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .theme-btn { padding:4px 7px; }
+  main, main.wide { padding:6px 10px 40px; }
+  .add { grid-template-columns:1fr auto; }
+  .add .path { grid-column:1/-1; border-bottom:1px solid var(--pb); }
+  .add .name { min-width:0; }
+  .model-rail { flex-wrap:nowrap; overflow-x:auto; padding-bottom:0; }
+  .provider-badge { flex:0 0 auto; }
+  .card-main { grid-template-columns:1fr; gap:10px; }
+  .identity-row { justify-content:space-between; }
+  .activity { order:2; }
+  .actions { order:3; }
+  .actions button, .actions a.open { flex:1 1 auto; text-align:center; }
+  .card-detail { display:block; }
+  .drawer { border-right:0; border-bottom:1px solid var(--pb); }
+  .drawer:last-child { border-bottom:0; }
+  .sprintform { grid-template-columns:1fr 1fr; }
+  .sprintform button { grid-column:1/-1; }
+  .btop { grid-template-columns:auto minmax(0,1fr); align-items:center; }
+  .btop h2 { font-size:13px; }
+  .btools { position:static; grid-template-columns:1fr 1fr; margin:0 0 8px; }
+  .btools input { grid-column:1/-1; border-bottom:1px solid var(--pb); }
+  .status-tabs { display:flex; gap:0; overflow-x:auto; margin:0 0 8px; padding:0; border:1px solid var(--pb); border-left:2px solid var(--accent); background:var(--panel); }
+  .status-tabs button { flex:0 0 auto; color:var(--muted); background:transparent; border:0; border-left:1px solid var(--pb); border-radius:0; padding:6px 10px; }
+  .status-tabs button:first-child { border-left:0; }
+  .status-tabs button.active { color:var(--accent-text); background:var(--accent); }
+  .board { display:block; overflow:visible; }
+  .bcol { display:none; }
+  .bcol.active { display:flex; }
+  .ticket-actions select { font-size:11px; opacity:1; }
+}
+@media (prefers-reduced-motion:reduce) { *, *::before, *::after { scroll-behavior:auto !important; transition:none !important; } }
+
+/* Roadmap: one node per real milestone/phase of the project */
+.roadmap-viz { border:1px solid var(--pb); border-left:2px solid var(--accent); border-radius:3px; background:var(--panel); backdrop-filter:blur(12px); padding:10px 12px; margin-bottom:10px; }
+.roadmap-header { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:10px; }
+.roadmap-header h3 { margin:0; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); }
+.roadmap-legend { font-size:11px; color:var(--muted); }
+.roadmap-timeline { display:flex; align-items:flex-start; gap:4px; overflow-x:auto; padding:2px 0 8px; }
+.rm-node { flex:0 0 150px; min-width:0; display:flex; flex-direction:column; align-items:center; gap:5px; text-align:center; }
+.rm-dot { width:30px; height:30px; border-radius:50%; border:2px solid var(--pb); background:var(--row); display:grid; place-items:center; font-weight:700; font-size:12px; }
+.rm-node.done .rm-dot { border-color:var(--ok); color:var(--ok); }
+.rm-node.active .rm-dot { border-color:var(--run); color:var(--run); }
+.rm-node.approved .rm-dot { border-color:var(--accent); background:var(--accent); color:var(--accent-text); }
+.rm-name { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; font-weight:600; }
+.rm-bar { width:100%; height:3px; border-radius:999px; background:var(--pb); overflow:hidden; }
+.rm-bar span { display:block; height:100%; background:var(--accent); }
+.rm-node.active .rm-bar span { background:var(--run); }
+.rm-count { font-size:10px; color:var(--muted); }
+.rm-state { font-size:9.5px; text-transform:uppercase; letter-spacing:.05em; padding:1px 6px; border:1px solid var(--pb); border-radius:3px; color:var(--muted); white-space:nowrap; }
+.rm-node.active .rm-state { color:var(--run); border-color:var(--run); }
+.rm-node.done .rm-state { color:var(--ok); border-color:var(--ok); }
+.rm-node.approved .rm-state { color:var(--accent-text); background:var(--accent); border-color:var(--accent); }
+.rm-link { flex:0 0 12px; height:2px; margin-top:15px; background:var(--pb); }
+/* Phase colors: hue picked from the phase number so the chip, roadmap node and metrics row agree */
+.ph { --pc:hsl(var(--phue) 70% 36%); }
+[data-theme="dark"] .ph { --pc:hsl(var(--phue) 85% 68%); }
+.ph-0 { --phue:145; } .ph-1 { --phue:192; } .ph-2 { --phue:228; } .ph-3 { --phue:280; }
+.ph-4 { --phue:325; } .ph-5 { --phue:12; } .ph-6 { --phue:38; } .ph-7 { --phue:75; }
+.tmeta .ph { color:var(--pc); border-color:color-mix(in srgb, var(--pc) 55%, transparent); background:color-mix(in srgb, var(--pc) 13%, transparent); font-weight:600; }
+.rm-node.ph .rm-dot { border-color:var(--pc); color:var(--pc); }
+.rm-node.approved.ph .rm-dot { background:var(--pc); color:var(--accent-text); }
+.rm-node.ph .rm-bar span { background:var(--pc); }
+.rm-node.ph .rm-name { color:var(--pc); }
+.phase-row.ph .name { border-left:3px solid var(--pc); padding-left:7px; }
+.phase-row.ph .bar span { background:var(--pc); }
+.phase-row.active .name { font-weight:700; }
 </style>
 </head>
 <body>
 <header>
-  <h1>AI Hub</h1>
-  <span class="sub">Local project boards. Tasks live in each repo; AI works through the backlog CLI.</span>
+  <div class="brandcopy">
+    <div class="brandmark" aria-hidden="true">AI</div>
+    <h1>AI Hub</h1>
+    <span class="sub">Local work router for Backlog.md projects</span>
+  </div>
+  <button class="theme-btn" id="theme" type="button" aria-label="Toggle light or dark theme"></button>
 </header>
-<main>
+<main id="main">
   <form class="add" id="addForm">
-    <input class="path" id="pathInput" placeholder="Absolute path, e.g. /Users/me/project" aria-label="Project path" required>
-    <input class="name" id="nameInput" placeholder="Name (optional)" aria-label="Project name">
+    <input class="path" id="pathInput" placeholder="Absolute repository path" aria-label="Project path" required>
+    <input class="name" id="nameInput" placeholder="Display name (optional)" aria-label="Project name">
     <button class="primary" type="submit">Add project</button>
   </form>
-  <div class="msg" id="msg" role="status"></div>
+  <div class="model-rail" id="modelRail" aria-label="Model routing legend"></div>
+  <div class="msg" id="msg" role="status" aria-live="polite"></div>
   <div class="grid" id="grid"></div>
+  <div id="boardView" hidden>
+    <div class="btop">
+      <button id="boardBack" type="button">← Projects</button>
+      <div>
+        <h2 id="boardTitle"></h2>
+        <span class="sub" id="boardMeta"></span>
+      </div>
+    </div>
+    <div class="phase-metrics" id="phaseMetrics" hidden></div>
+
+    <div class="roadmap-viz" id="roadmapViz" hidden>
+      <div class="roadmap-header">
+        <h3>Project roadmap</h3>
+        <span class="roadmap-legend" id="roadmapMeta"></span>
+      </div>
+      <div class="roadmap-timeline" id="roadmapTimeline"></div>
+    </div>
+    <div class="btools">
+      <input type="search" id="fSearch" placeholder="Search tickets" aria-label="Search id, title, label, or assignee">
+      <select id="fSprint" aria-label="Filter by sprint"></select>
+      <select id="fPriority" aria-label="Filter by priority">
+        <option value="">All priorities</option>
+        <option value="high">High priority</option>
+        <option value="medium">Medium priority</option>
+        <option value="low">Low priority</option>
+        <option value="__none">No priority</option>
+      </select>
+      <select id="fTier" aria-label="Filter by model">
+        <option value="">All models</option>
+        <option value="dev-high">Claude · high-level dev</option>
+        <option value="dev-medium">GPT · medium dev</option>
+        <option value="dev-low">DeepSeek · low-level dev</option>
+        <option value="art">Gemini / GPT · art</option>
+        <option value="__none">Unrouted</option>
+      </select>
+    </div>
+    <div class="status-tabs" id="statusTabs" aria-label="Board columns"></div>
+    <div class="board" id="board"></div>
+  </div>
 </main>
 <script>
 const grid = document.getElementById("grid");
@@ -102,23 +370,75 @@ function el(tag, props, children) {
   return node;
 }
 
+const PROVIDER_ICONS = {
+  claude: { label: "Claude", fallback: "C" },
+  openai: { label: "OpenAI", fallback: "G" },
+  gemini: { label: "Gemini", fallback: "Ge" },
+  deepseek: { label: "DeepSeek", fallback: "D" },
+};
+
+const MODEL_INFO = {
+  "dev-high": { cls: "claude", provider: "Claude", level: "High-level dev", icons: ["claude"] },
+  "dev-medium": { cls: "gpt", provider: "GPT", level: "Medium dev", icons: ["openai"] },
+  "dev-low": { cls: "deepseek", provider: "DeepSeek", level: "Low-level dev", icons: ["deepseek"] },
+  art: { cls: "art", provider: "Gemini + GPT", level: "Art", icons: ["gemini", "openai"] },
+};
+
+function providerBadge(tier, compact) {
+  const info = MODEL_INFO[tier];
+  if (!info) {
+    return el("span", { className: "provider-badge missing", title: "Select a model before work begins" }, [
+      el("span", { className: "mark", textContent: "?", ariaHidden: "true" }),
+      el("span", { className: "provider", textContent: "Unrouted" }),
+    ]);
+  }
+  const icons = info.icons.map((name) => el("span", { className: `provider-icon ${name}`, textContent: PROVIDER_ICONS[name].fallback, title: PROVIDER_ICONS[name].label, ariaHidden: "true" }));
+  const children = [el("span", { className: "marks" }, icons), el("span", { className: "provider", textContent: info.provider })];
+  if (!compact) children.push(el("span", { className: "level", textContent: info.level }));
+  return el("span", { className: `provider-badge ${info.cls}`, title: `${tier}: ${info.provider} — ${info.level}` }, children);
+}
+
+function renderModelRail() {
+  document.getElementById("modelRail").replaceChildren(...Object.keys(MODEL_INFO).map((tier) => providerBadge(tier, false)));
+}
+
+const GATE_LABELS = { "not-started": "Not started", "in-progress": "In progress", "completed": "Completed", "approved": "Approved" };
+
+function findPhaseSprint(project) {
+  const sprints = (project.summary && project.summary.sprints) || [];
+  return sprints.find((sprint) => sprint.title === project.currentPhase) || null;
+}
+
+function phaseSection(project) {
+  if (!project.currentPhase || !project.phaseProgress) return null;
+  const gate = project.gateStatus;
+  const head = el("div", { className: "phase-head" }, [
+    el("span", { className: "phase-name", textContent: project.currentPhase, title: project.currentPhase }),
+    el("span", { className: `badge gate-${gate}`, textContent: GATE_LABELS[gate] || gate }),
+  ]);
+  const bar = el("div", { className: "phase-bar" }, [el("div", { className: "phase-fill", style: `width:${project.phaseProgress.percent}%` })]);
+  const label = el("div", { className: "now", textContent: `${project.phaseProgress.done}/${project.phaseProgress.total} tickets done (${project.phaseProgress.percent}%)` });
+  return el("div", { className: "phase" }, [head, bar, label]);
+}
+
 function columnChips(summary) {
   const wrap = el("div", { className: "cols" });
-  for (const [status, count] of Object.entries(summary.counts)) {
-    const kind = /progress/i.test(status) ? "prog" : /done/i.test(status) ? "done" : "";
+  const order = ["In Progress", "To Do", "Done", "Closed"];
+  for (const status of order) {
+    if (!Object.prototype.hasOwnProperty.call(summary.counts, status)) continue;
+    const count = summary.counts[status];
+    const kind = /progress/i.test(status) ? "prog" : /^(done|closed)$/i.test(status) ? "done" : "";
     wrap.append(el("span", { className: `col ${kind}` }, [el("b", { textContent: String(count) }), status]));
   }
-  if (!summary.total) wrap.append(el("span", { className: "col", textContent: "No tasks yet" }));
+  if (!summary.total) wrap.append(el("span", { className: "col", textContent: "No tasks" }));
   return wrap;
 }
 
 function inProgressList(summary) {
   if (!summary.inProgress.length) return null;
-  const list = el("ul");
-  for (const task of summary.inProgress.slice(0, 4)) {
-    list.append(el("li", { textContent: `${task.id} ${task.title}` }));
-  }
-  return el("div", { className: "now" }, ["In progress", list]);
+  const names = summary.inProgress.slice(0, 3).map((task) => `${task.id} ${task.title}`).join(" · ");
+  const extra = summary.inProgress.length > 3 ? ` +${summary.inProgress.length - 3}` : "";
+  return el("div", { className: "now", title: names }, [el("strong", { textContent: "Active: " }), `${names}${extra}`]);
 }
 
 async function act(id, label, run) {
@@ -148,6 +468,15 @@ function actionRow(project) {
   const row = el("div", { className: "actions" });
   const disabled = busy.has(project.id);
   if (project.initialized && project.exists) {
+    const boardLink = el("button", { className: "board-open", textContent: "Open board", disabled });
+    boardLink.onclick = () => { location.hash = `#board/${project.id}`; };
+    row.append(boardLink);
+    const phaseSprint = findPhaseSprint(project);
+    if (phaseSprint) {
+      const phaseLink = el("button", { className: "phase-open", textContent: "Phase", disabled, title: project.currentPhase });
+      phaseLink.onclick = () => { location.hash = `#board/${project.id}/${encodeURIComponent(phaseSprint.id)}`; };
+      row.append(phaseLink);
+    }
     if (project.running) {
       row.append(el("a", { className: "open", href: project.url, target: "_blank", rel: "noopener", textContent: "Open dashboard" }));
       const stop = el("button", { textContent: "Stop", disabled });
@@ -179,73 +508,81 @@ function statusBadge(project) {
 
 function sprintSection(project) {
   const summary = project.summary;
-  const wrap = el("div", { className: "sprints" }, [el("div", { className: "head", textContent: "Sprints" })]);
-  if (summary.sprintsError) wrap.append(el("div", { className: "err", textContent: summary.sprintsError }));
+  const count = (summary.sprints || []).filter((sprint) => !sprint.completed).length;
+  const drawer = el("details", { className: "drawer" }, [el("summary", { textContent: `${count} active sprint${count === 1 ? "" : "s"}` })]);
+  const body = el("div", { className: "drawer-body" });
+  if (summary.sprintsError) body.append(el("div", { className: "err", textContent: summary.sprintsError }));
   for (const sprint of summary.sprints || []) {
-    const meta = `${sprint.done}/${sprint.total} done${sprint.due ? `, due ${sprint.due}` : ""}`;
-    wrap.append(el("div", { className: `sprint ${sprint.completed ? "completed" : ""}` }, [
-      el("span", { textContent: sprint.title }),
-      el("span", { textContent: sprint.completed ? `${meta} (completed)` : meta }),
+    const meta = `${sprint.done}/${sprint.total}${sprint.due ? ` · ${sprint.due}` : ""}`;
+    body.append(el("div", { className: `sprint ${sprint.completed ? "completed" : ""}` }, [
+      el("span", { textContent: sprint.title, title: sprint.title }),
+      el("span", { textContent: sprint.completed ? `${meta} · done` : meta }),
     ]));
   }
-  const name = el("input", { type: "text", placeholder: "New sprint name", maxLength: 80, ariaLabel: "Sprint name", required: true });
+  const name = el("input", { type: "text", placeholder: "Sprint name", maxLength: 80, ariaLabel: "Sprint name", required: true });
   const due = el("input", { type: "date", ariaLabel: "Sprint due date" });
-  const add = el("button", { type: "submit", textContent: "Add sprint", disabled: busy.has(project.id) });
+  const add = el("button", { type: "submit", textContent: "Add", disabled: busy.has(project.id) });
   const form = el("form", { className: "sprintform" }, [name, due, add]);
   form.onsubmit = (event) => {
     event.preventDefault();
     act(project.id, "Sprint added", () => api("POST", `/api/projects/${project.id}/sprints`, { name: name.value, dueDate: due.value }));
   };
-  wrap.append(form);
-  return wrap;
+  body.append(form);
+  drawer.append(body);
+  return drawer;
 }
 
 function unplannedSection(project) {
   const summary = project.summary;
   const open = (summary.sprints || []).filter((sprint) => !sprint.completed);
   if (!summary.unplannedTotal || !open.length) return null;
-  const wrap = el("div", { className: "unplanned" }, [el("div", { className: "head", textContent: `Not in a sprint (${summary.unplannedTotal})` })]);
+  const drawer = el("details", { className: "drawer" }, [el("summary", { textContent: `${summary.unplannedTotal} not in a sprint` })]);
+  const body = el("div", { className: "drawer-body" });
   for (const task of summary.unplanned) {
     const select = el("select", { ariaLabel: `Assign ${task.id} to a sprint`, disabled: busy.has(project.id) });
-    select.append(el("option", { value: "", textContent: "Assign to sprint…" }));
+    select.append(el("option", { value: "", textContent: "Choose sprint" }));
     for (const sprint of open) select.append(el("option", { value: sprint.id, textContent: sprint.title }));
     select.onchange = () => {
       if (select.value) act(project.id, `${task.id} assigned`, () => api("POST", `/api/projects/${project.id}/assign`, { taskId: task.id, sprintId: select.value }));
     };
-    wrap.append(el("div", { className: "utask" }, [el("span", { textContent: `${task.id} ${task.title}` }), select]));
+    body.append(el("div", { className: "utask" }, [el("span", { textContent: `${task.id} ${task.title}`, title: task.title }), select]));
   }
-  if (summary.unplannedTotal > summary.unplanned.length) {
-    wrap.append(el("div", { className: "head", textContent: `+${summary.unplannedTotal - summary.unplanned.length} more; assign with the backlog CLI or dashboard` }));
-  }
-  return wrap;
+  if (summary.unplannedTotal > summary.unplanned.length) body.append(el("div", { className: "sub", textContent: `+${summary.unplannedTotal - summary.unplanned.length} more` }));
+  drawer.append(body);
+  return drawer;
 }
 
 function protocolNotice(project) {
   if (!project.protocolStale) return null;
   const button = el("button", { textContent: "Update", disabled: busy.has(project.id) });
   button.onclick = () => act(project.id, "Agent protocol updated", () => api("POST", `/api/projects/${project.id}/protocol`));
-  return el("div", { className: "notice" }, [el("span", { textContent: "Agent protocol in AGENTS.md / CLAUDE.md is out of date" }), button]);
+  return el("div", { className: "notice" }, [el("span", { textContent: "Model-routing instructions need an update" }), button]);
 }
 
 function card(project) {
-  const node = el("div", { className: `card ${project.exists ? "" : "missing"}` });
-  node.append(el("div", { className: "top" }, [
-    el("div", {}, [el("div", { className: "title", textContent: project.name }), el("div", { className: "path", textContent: project.path })]),
-    statusBadge(project),
-  ]));
-  if (project.summary && project.summary.error) {
-    node.append(el("div", { className: "err", textContent: project.summary.error }));
-  } else if (project.summary) {
-    node.append(columnChips(project.summary));
+  const node = el("article", { className: `card ${project.exists ? "" : "missing"}` });
+  const identity = el("div", { className: "identity" }, [
+    el("div", { className: "identity-row" }, [el("div", { className: "title", textContent: project.name }), statusBadge(project)]),
+    el("div", { className: "path", textContent: project.path, title: project.path }),
+  ]);
+  const activity = el("div", { className: "activity" });
+  if (project.summary && project.summary.error) activity.append(el("div", { className: "err", textContent: project.summary.error }));
+  else if (project.summary) {
+    const phase = phaseSection(project);
+    if (phase) activity.append(phase);
+    activity.append(columnChips(project.summary));
     const now = inProgressList(project.summary);
-    if (now) node.append(now);
-    node.append(sprintSection(project));
+    if (now) activity.append(now);
+  }
+  node.append(el("div", { className: "card-main" }, [identity, activity, actionRow(project)]));
+  if (project.summary && !project.summary.error) {
+    const detail = el("div", { className: "card-detail" }, [sprintSection(project)]);
     const unplanned = unplannedSection(project);
-    if (unplanned) node.append(unplanned);
+    if (unplanned) detail.append(unplanned);
+    node.append(detail);
     const notice = protocolNotice(project);
     if (notice) node.append(notice);
   }
-  node.append(actionRow(project));
   return node;
 }
 
@@ -282,8 +619,407 @@ document.getElementById("addForm").onsubmit = async (event) => {
   }
 };
 
-refresh();
-setInterval(() => { if (!busy.size && !document.hidden && !(document.activeElement && grid.contains(document.activeElement) && /^(INPUT|SELECT)$/.test(document.activeElement.tagName))) refresh(); }, 5000);
+const addForm = document.getElementById("addForm");
+const modelRail = document.getElementById("modelRail");
+const boardView = document.getElementById("boardView");
+const boardEl = document.getElementById("board");
+const statusTabs = document.getElementById("statusTabs");
+const mainEl = document.getElementById("main");
+const fSearch = document.getElementById("fSearch");
+const fSprint = document.getElementById("fSprint");
+const fPriority = document.getElementById("fPriority");
+const fTier = document.getElementById("fTier");
+const phaseMetricsEl = document.getElementById("phaseMetrics");
+const board = { id: null, data: null, metrics: null, limits: {}, dragging: false, busy: false, draft: "", draftTier: "dev-high", sprintSig: "", mobileStatus: "", pendingSprint: null };
+const FINISHED = /^(done|closed)$/i;
+const FIRST_PAGE = 40;
+const FINISHED_PAGE = 15;
+
+function visibleTasks() {
+  const q = fSearch.value.trim().toLowerCase();
+  return board.data.tasks.filter((task) => {
+    if (fSprint.value === "__none") { if (task.milestone) return false; }
+    else if (fSprint.value && task.milestone !== fSprint.value) return false;
+    if (fPriority.value === "__none") { if (task.priority) return false; }
+    else if (fPriority.value && (task.priority || "").toLowerCase() !== fPriority.value) return false;
+    if (fTier.value === "__none") { if (task.modelTier) return false; }
+    else if (fTier.value && task.modelTier !== fTier.value) return false;
+    if (q && !`${task.id} ${task.title} ${task.labels.join(" ")} ${task.assignees.join(" ")}`.toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+
+function syncToolbar() {
+  const sprints = board.data.sprints;
+  const sig = JSON.stringify(sprints.map((sprint) => [sprint.id, sprint.title]));
+  if (sig === board.sprintSig) return;
+  board.sprintSig = sig;
+  const previous = fSprint.value;
+  fSprint.replaceChildren(
+    el("option", { value: "", textContent: "All sprints" }),
+    el("option", { value: "__none", textContent: "No sprint" }),
+    ...sprints.map((sprint) => el("option", { value: sprint.id, textContent: sprint.completed ? `${sprint.title} (completed)` : sprint.title })),
+  );
+  const pending = board.pendingSprint;
+  board.pendingSprint = null;
+  const options = [...fSprint.options].map((option) => option.value);
+  if (pending && options.includes(pending)) fSprint.value = pending;
+  else fSprint.value = options.includes(previous) ? previous : "";
+}
+
+async function moveTicket(taskId, status) {
+  const task = board.data.tasks.find((entry) => entry.id === taskId);
+  if (!task || task.status.toLowerCase() === status.toLowerCase()) return;
+  const previous = task.status;
+  task.status = status;
+  board.busy = true;
+  setMessage("");
+  renderBoard();
+  try {
+    await api("POST", `/api/projects/${board.id}/move`, { taskId, status });
+    setMessage(`${taskId} moved to ${status}`, true);
+  } catch (error) {
+    task.status = previous;
+    setMessage(error.message);
+  } finally {
+    board.busy = false;
+    await loadBoardData();
+  }
+}
+
+async function changeTier(taskId, modelTier) {
+  const task = board.data.tasks.find((entry) => entry.id === taskId);
+  if (!task || task.modelTier === modelTier) return;
+  const previous = task.modelTier;
+  task.modelTier = modelTier;
+  renderBoard();
+  try {
+    await api("POST", `/api/projects/${board.id}/tier`, { taskId, modelTier });
+    setMessage(`${taskId} routed to ${modelTier}`, true);
+  } catch (error) {
+    task.modelTier = previous;
+    setMessage(error.message);
+  }
+  await loadBoardData();
+}
+
+const PHASE_HUES = 8;
+function phaseClass(title) {
+  const match = /^Phase\s*(\d+)/i.exec(title || "");
+  return match ? ` ph ph-${Number(match[1]) % PHASE_HUES}` : "";
+}
+
+function ticket(task, statuses, sprintTitles) {
+  const priority = (task.priority || "").toLowerCase();
+  const node = el("article", { className: `ticket ${priority ? `p-${priority}` : ""}`, draggable: true });
+  node.ondragstart = (event) => {
+    board.dragging = true;
+    event.dataTransfer.setData("text/plain", task.id);
+    event.dataTransfer.effectAllowed = "move";
+    node.classList.add("dragging");
+  };
+  node.ondragend = () => { board.dragging = false; node.classList.remove("dragging"); };
+  node.append(el("div", { className: "ticket-head" }, [
+    el("span", { className: "tid", textContent: task.id }),
+    providerBadge(task.modelTier, true),
+  ]));
+  node.append(el("div", { className: "tt", textContent: task.title, title: task.title }));
+  const meta = el("div", { className: "tmeta" });
+  if (task.priority) meta.append(el("span", { textContent: task.priority }));
+  if (task.milestone && sprintTitles.has(task.milestone)) {
+    const sprintTitle = sprintTitles.get(task.milestone);
+    meta.append(el("span", { className: phaseClass(sprintTitle).trim(), textContent: sprintTitle, title: "Sprint" }));
+  }
+  if (task.dueDate) {
+    const late = !FINISHED.test(task.status) && task.dueDate < new Date().toISOString().slice(0, 10);
+    meta.append(el("span", { className: late ? "due late" : "due", textContent: `due ${task.dueDate}` }));
+  }
+  const ordinaryLabels = task.labels.filter((label) => !board.data.modelTiers.includes(label));
+  for (const label of ordinaryLabels.slice(0, 2)) meta.append(el("span", { textContent: label }));
+  if (ordinaryLabels.length > 2) meta.append(el("span", { textContent: `+${ordinaryLabels.length - 2}` }));
+  if (task.assignees.length) meta.append(el("span", { textContent: task.assignees[0], title: task.assignees.join(", ") }));
+  if (meta.childNodes.length) node.append(meta);
+  const move = el("select", { ariaLabel: `Move ${task.id}` });
+  move.append(el("option", { value: "", textContent: "Move" }));
+  for (const status of statuses) if (status.toLowerCase() !== task.status.toLowerCase()) move.append(el("option", { value: status, textContent: status }));
+  move.onchange = () => { if (move.value) moveTicket(task.id, move.value); };
+  const tier = el("select", { ariaLabel: `Route ${task.id}` });
+  tier.append(el("option", { value: "", textContent: "Route" }));
+  for (const modelTier of board.data.modelTiers) tier.append(el("option", { value: modelTier, textContent: MODEL_INFO[modelTier].provider }));
+  tier.value = task.modelTier || "";
+  tier.onchange = () => { if (tier.value) changeTier(task.id, tier.value); };
+  node.append(el("div", { className: "ticket-actions" }, [move, tier]));
+  return node;
+}
+
+function quickAdd() {
+  const input = el("input", { type: "text", placeholder: "New ticket title", maxLength: 200, ariaLabel: "New ticket title", required: true });
+  input.value = board.draft;
+  input.oninput = () => { board.draft = input.value; };
+  const tier = el("select", { ariaLabel: "Route to model", required: true });
+  for (const modelTier of board.data.modelTiers) {
+    const info = MODEL_INFO[modelTier];
+    tier.append(el("option", { value: modelTier, textContent: `${info.provider} · ${info.level}` }));
+  }
+  tier.value = board.draftTier;
+  tier.onchange = () => { board.draftTier = tier.value; };
+  const add = el("button", { className: "primary", type: "submit", textContent: "Add" });
+  const form = el("form", { className: "quick" }, [input, tier, add]);
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    const sprintId = /^m-\d+$/.test(fSprint.value) ? fSprint.value : "";
+    add.disabled = true;
+    try {
+      await api("POST", `/api/projects/${board.id}/tasks`, { title: input.value, sprintId, modelTier: tier.value });
+      board.draft = "";
+      setMessage("Ticket added", true);
+      await loadBoardData();
+    } catch (error) {
+      setMessage(error.message);
+      add.disabled = false;
+    }
+  };
+  return form;
+}
+
+function boardColumn(status, tasks, index, data, sprintTitles) {
+  const finished = FINISHED.test(status);
+  const closed = /^closed$/i.test(status);
+  const active = status.toLowerCase() === board.mobileStatus.toLowerCase();
+  const col = el("section", { className: `bcol ${finished ? "fin" : ""} ${closed ? "closed" : ""} ${active ? "active" : ""}` });
+  col.append(el("div", { className: "bhead" }, [el("span", { textContent: status }), el("span", { className: "n", textContent: String(tasks.length) })]));
+  if (index === 0) col.append(quickAdd());
+  col.ondragover = (event) => { if (!board.dragging) return; event.preventDefault(); col.classList.add("over"); };
+  col.ondragleave = (event) => { if (!col.contains(event.relatedTarget)) col.classList.remove("over"); };
+  col.ondrop = (event) => {
+    event.preventDefault();
+    col.classList.remove("over");
+    moveTicket(event.dataTransfer.getData("text/plain"), status);
+  };
+  const limit = board.limits[status] || (finished ? FINISHED_PAGE : FIRST_PAGE);
+  for (const task of tasks.slice(0, limit)) col.append(ticket(task, data.statuses, sprintTitles));
+  if (!tasks.length) col.append(el("div", { className: "bempty", textContent: "No tickets here" }));
+  if (tasks.length > limit) {
+    const more = el("button", { className: "more", type: "button", textContent: `Show ${Math.min(FIRST_PAGE, tasks.length - limit)} more · ${tasks.length - limit} hidden` });
+    more.onclick = () => { board.limits[status] = limit + FIRST_PAGE; renderBoard(); };
+    col.append(more);
+  }
+  return col;
+}
+
+function closedPlaceholder() {
+  const enable = el("button", { type: "button", textContent: "Enable Closed column" });
+  enable.onclick = async () => {
+    if (!confirm('Add "Closed" to statuses in this repo\'s backlog/config.yml? The file is edited in the repo.')) return;
+    enable.disabled = true;
+    try {
+      await api("POST", `/api/projects/${board.id}/closed`);
+      setMessage("Closed column enabled", true);
+    } catch (error) {
+      setMessage(error.message);
+    }
+    await loadBoardData();
+  };
+  return el("div", { className: "bcol ghost" }, [
+    el("p", { textContent: "Closed is off for this project. Closed tickets count as finished in sprint progress." }),
+    enable,
+  ]);
+}
+
+function renderStatusTabs(columns, shown) {
+  if (!board.mobileStatus || !columns.some((status) => status.toLowerCase() === board.mobileStatus.toLowerCase())) board.mobileStatus = columns[0] || "";
+  statusTabs.replaceChildren(...columns.map((status) => {
+    const count = shown.filter((task) => task.status.toLowerCase() === status.toLowerCase()).length;
+    const button = el("button", { type: "button", className: status.toLowerCase() === board.mobileStatus.toLowerCase() ? "active" : "", textContent: `${status} ${count}` });
+    button.onclick = () => { board.mobileStatus = status; renderBoard(); };
+    return button;
+  }));
+}
+
+function renderBoard() {
+  const data = board.data;
+  if (!data) return;
+  syncToolbar();
+  document.getElementById("boardTitle").textContent = data.project.name;
+  const finishedCount = data.tasks.filter((task) => FINISHED.test(task.status)).length;
+  document.getElementById("boardMeta").textContent = `${data.tasks.length} tickets, ${finishedCount} finished`;
+  const scroll = boardEl.scrollLeft;
+  const shown = visibleTasks();
+  const sprintTitles = new Map(data.sprints.map((sprint) => [sprint.id, sprint.title]));
+  const known = new Set(data.statuses.map((status) => status.toLowerCase()));
+  const extra = [...new Set(shown.map((task) => task.status))].filter((status) => !known.has(status.toLowerCase()));
+  const columns = [...data.statuses, ...extra];
+  if (!data.closedEnabled) columns.push("Closed setup");
+  renderStatusTabs(columns, shown);
+  const rendered = data.statuses.concat(extra).map((status, index) => boardColumn(status, shown.filter((task) => task.status.toLowerCase() === status.toLowerCase()), index, data, sprintTitles));
+  if (!data.closedEnabled) {
+    const ghost = closedPlaceholder();
+    if (board.mobileStatus === "Closed setup") ghost.classList.add("active");
+    rendered.push(ghost);
+  }
+  boardEl.replaceChildren(...rendered);
+  boardEl.scrollLeft = scroll;
+  if (data.sprintsError) setMessage(data.sprintsError);
+}
+
+function phaseDurationText(duration) {
+  if (!duration) return "—";
+  const actual = `${duration.actualDays}d actual`;
+  if (duration.estimatedDays === null) return `${actual}${duration.ongoing ? " (ongoing)" : ""}`;
+  const verdict = duration.ongoing ? "" : duration.actualDays > duration.estimatedDays ? " (late)" : " (on time)";
+  return `${actual} / ${duration.estimatedDays}d est${verdict}`;
+}
+
+function gateBadge(gate) {
+  if (!gate) return el("span", { className: "gate none", textContent: "no gate" });
+  const cls = gate.decision === "approved" ? "approved" : "rework";
+  const title = `${gate.decision}${gate.reviewer ? ` by ${gate.reviewer}` : ""}${gate.date ? ` on ${gate.date.slice(0, 10)}` : ""}`;
+  return el("span", { className: `gate ${cls}`, textContent: gate.decision, title });
+}
+
+function phaseRow(phase, activeId) {
+  const pct = phase.percent === null ? 0 : phase.percent;
+  return el("div", { className: `phase-row${phase.milestoneId === activeId ? " active" : ""}${phaseClass(phase.phase)}` }, [
+    el("div", { className: "name", textContent: phase.phase, title: phase.phase }),
+    el("div", { className: "bar" }, [el("span", { style: `width:${pct}%` })]),
+    el("div", { className: "count", textContent: `${phase.done}/${phase.total}` }),
+    el("div", { className: "duration", textContent: phaseDurationText(phase.duration), title: "actual / estimated phase duration" }),
+    gateBadge(phase.gate),
+  ]);
+}
+
+// Phase velocity (tickets done per phase) and gate decisions are shown per row; this builds the
+// summary line (last-3-phase trend + overall gate pass rate) and the export links above the rows.
+function renderPhaseMetrics() {
+  const metrics = board.metrics;
+  if (!metrics || !metrics.phases.length) {
+    phaseMetricsEl.hidden = true;
+    phaseMetricsEl.replaceChildren();
+    return;
+  }
+  phaseMetricsEl.hidden = false;
+  const exportBase = `/api/projects/${board.id}/metrics`;
+  const head = el("div", { className: "phase-metrics-head" }, [
+    el("h3", { textContent: "Phase metrics" }),
+    el("div", { className: "exports" }, [
+      el("a", { href: exportBase, download: "phase-metrics.json", textContent: "Export JSON" }),
+      el("a", { href: `${exportBase}?format=csv`, download: "phase-metrics.csv", textContent: "Export CSV" }),
+    ]),
+  ]);
+  const summary = [];
+  if (metrics.trend.length) {
+    const chips = metrics.trend.flatMap((phase, index) => {
+      const chip = el("span", { className: "chip", textContent: `${phase.percent}%`, title: phase.phase });
+      return index === 0 ? [chip] : [el("span", { textContent: "→" }), chip];
+    });
+    summary.push(el("div", { className: "phase-trend" }, [el("span", { textContent: "Last 3 phases:" }), ...chips]));
+  }
+  summary.push(el("div", {
+    textContent: metrics.gatePassRate
+      ? `Gate pass rate: ${metrics.gatePassRate.approved}/${metrics.gatePassRate.approved + metrics.gatePassRate.rework} approved (${metrics.gatePassRate.percent}%)`
+      : "Gate pass rate: no gate decisions recorded yet",
+  }));
+  const activeId = (metrics.phases.find((phase) => !phase.completed && phase.total > 0) || {}).milestoneId || null;
+  const rows = el("div", { className: "phase-rows" }, metrics.phases.map((phase) => phaseRow(phase, activeId)));
+  phaseMetricsEl.replaceChildren(head, el("div", { className: "phase-metrics-summary" }, summary), rows);
+}
+
+async function loadBoardData() {
+  const id = board.id;
+  if (!id) return;
+  try {
+    const [data, metrics] = await Promise.all([
+      api("GET", `/api/projects/${id}/board`),
+      api("GET", `/api/projects/${id}/metrics`).catch(() => null),
+    ]);
+    if (board.id !== id) return;
+    board.data = data;
+    board.metrics = metrics;
+    renderBoard();
+    renderPhaseMetrics();
+    renderRoadmap();
+  } catch (error) {
+    setMessage(error.message);
+  }
+}
+
+function showView() {
+  const match = /^#board\/([a-f0-9]{8})(?:\/([^/]+))?$/.exec(location.hash);
+  const open = Boolean(match);
+  board.id = open ? match[1] : null;
+  board.pendingSprint = open && match[2] ? decodeURIComponent(match[2]) : null;
+  boardView.hidden = !open;
+  grid.hidden = open;
+  addForm.hidden = open;
+  modelRail.hidden = open;
+  mainEl.classList.toggle("wide", open);
+  setMessage("");
+  if (open) {
+    board.data = null;
+    board.metrics = null;
+    board.limits = {};
+    board.mobileStatus = "";
+    board.sprintSig = "";
+    phaseMetricsEl.hidden = true;
+    document.getElementById("roadmapViz").hidden = true;
+    boardEl.replaceChildren();
+    loadBoardData();
+  } else {
+    refresh();
+  }
+}
+
+for (const control of [fSearch, fSprint, fPriority, fTier]) control.addEventListener("input", renderBoard);
+document.getElementById("boardBack").onclick = () => { location.hash = ""; };
+window.addEventListener("hashchange", showView);
+
+const themeBtn = document.getElementById("theme");
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  themeBtn.textContent = theme === "dark" ? "☀ Light" : "☾ Dark";
+  document.querySelector('meta[name="theme-color"]').content = theme === "dark" ? "#050a14" : "#f8fafc";
+  try { localStorage.setItem("ai-hub-theme", theme); } catch (error) { /* storage unavailable */ }
+}
+themeBtn.addEventListener("click", () => applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
+applyTheme(document.documentElement.dataset.theme);
+renderModelRail();
+showView();
+setInterval(() => {
+  if (document.hidden) return;
+  const focused = document.activeElement;
+  const editing = focused && /^(INPUT|SELECT)$/.test(focused.tagName) && (grid.contains(focused) || boardView.contains(focused));
+  if (board.id) { if (!board.busy && !board.dragging && !editing) loadBoardData(); return; }
+  if (!busy.size && !editing) refresh();
+}, 5000);
+function renderRoadmap() {
+  const viz = document.getElementById("roadmapViz");
+  const phases = ((board.metrics && board.metrics.phases) || []).filter((phase) => /^Phase\s*\d+/i.test(phase.phase));
+  viz.hidden = !phases.length;
+  if (!phases.length) return;
+  const activeId = (phases.find((phase) => !phase.completed && phase.total > 0) || {}).milestoneId || null;
+  const nodes = [];
+  let approved = 0;
+  phases.forEach((phase, index) => {
+    if (index) nodes.push(el("div", { className: "rm-link" }));
+    const match = /^Phase\s*(\d+)\s*[-:\u2013]?\s*(.*)$/i.exec(phase.phase);
+    const decision = phase.gate && phase.gate.decision;
+    let cls = "";
+    let state = "upcoming";
+    if (decision === "approved") { cls = "approved"; state = "approved"; approved += 1; }
+    else if (decision === "rework") { cls = "active"; state = "rework"; }
+    else if (phase.completed) { cls = "done"; state = "ready for gate"; }
+    else if (phase.milestoneId === activeId) { cls = "active"; state = "in progress"; }
+    nodes.push(el("div", { className: `rm-node ${cls}${phaseClass(phase.phase)}`, title: phase.phase }, [
+      el("div", { className: "rm-dot", textContent: match ? match[1] : "\u2022" }),
+      el("div", { className: "rm-name", textContent: (match && match[2]) || phase.phase }),
+      el("div", { className: "rm-bar" }, [el("span", { style: `width:${phase.percent || 0}%` })]),
+      el("div", { className: "rm-count", textContent: `${phase.done}/${phase.total}` }),
+      el("div", { className: "rm-state", textContent: state }),
+    ]));
+  });
+  document.getElementById("roadmapTimeline").replaceChildren(...nodes);
+  document.getElementById("roadmapMeta").textContent = `${phases.length} phases \u00b7 ${approved} approved`;
+}
 </script>
 </body>
 </html>
