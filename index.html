@@ -163,14 +163,16 @@ button.board-open { border-color:var(--run); color:var(--run); }
 .phase-row .gate.rework { color:var(--err); background:color-mix(in srgb, var(--err) 16%, transparent); }
 .phase-row .gate.none { color:var(--muted); background:var(--row); }
 @media (max-width:640px) {
-  .phase-row { grid-template-columns:minmax(0,1fr) 50px; grid-template-areas:"name gate" "bar bar" "count duration"; }
+  .phase-row { grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"name gate" "bar bar" "count duration"; row-gap:3px; }
+  .phase-row > * { min-width:0; }
   .phase-row .name { grid-area:name; }
   .phase-row .gate { grid-area:gate; justify-self:end; }
   .phase-row .bar { grid-area:bar; }
   .phase-row .count { grid-area:count; }
-  .phase-row .duration { grid-area:duration; text-align:right; }
+  .phase-row .duration { grid-area:duration; text-align:right; white-space:normal; }
+  .phase-rows { gap:12px; }
 }
-.btools { position:sticky; top:0; z-index:5; display:grid; grid-template-columns:minmax(220px,1fr) repeat(3,minmax(140px,auto)); gap:0; margin:0 0 10px; padding:0; background:var(--panel); border:1px solid var(--pb); border-left:2px solid var(--accent); border-radius:3px; backdrop-filter:blur(12px); }
+.btools { position:sticky; top:0; z-index:5; display:grid; grid-template-columns:minmax(220px,1fr) repeat(4,minmax(130px,auto)); gap:0; margin:0 0 10px; padding:0; background:var(--panel); border:1px solid var(--pb); border-left:2px solid var(--accent); border-radius:3px; backdrop-filter:blur(12px); }
 .btools input, .btools select { min-width:0; background:transparent; border:0; border-left:1px solid var(--pb); border-radius:0; }
 .btools input { border-left:0; }
 .status-tabs { display:none; }
@@ -188,6 +190,33 @@ button.board-open { border-color:var(--run); color:var(--run); }
 .ticket:hover, .ticket:focus-within { border-color:var(--arrow); }
 .ticket.dragging { opacity:.4; }
 .ticket.p-high { border-left-color:var(--err); } .ticket.p-medium { border-left-color:var(--warn); } .ticket.p-low { border-left-color:var(--run); }
+.ticket.ph { border-left:3px solid var(--pc); background:color-mix(in srgb, var(--pc) 8%, var(--row)); }
+.ticket:not(.ph) { border-left:3px dashed var(--pb); }
+.ticket.ph .tid { color:var(--pc); }
+.ticket.flash { outline:2px solid var(--pc, var(--run)); outline-offset:2px; }
+.tmeta .pri { font-weight:600; }
+.tmeta .pri-high { color:var(--err); border-color:var(--err); }
+.tmeta .pri-medium { color:var(--warn); border-color:var(--warn); }
+.tmeta .pri-low { color:var(--run); border-color:var(--run); }
+button.rm-node { background:transparent; border:1px solid transparent; border-radius:4px; padding:6px 4px; text-transform:none; letter-spacing:normal; font-size:inherit; font-weight:inherit; cursor:pointer; color:var(--text); }
+button.rm-node:hover:not(:disabled) { border-color:color-mix(in srgb, var(--pc, var(--arrow)) 60%, transparent); }
+button.rm-node.selected { border-color:var(--pc); background:color-mix(in srgb, var(--pc) 12%, transparent); }
+.phase-detail { margin-top:6px; padding:10px 12px; border:1px solid color-mix(in srgb, var(--pc) 45%, var(--pb)); border-left:3px solid var(--pc); border-radius:3px; background:color-mix(in srgb, var(--pc) 6%, transparent); display:flex; flex-direction:column; gap:8px; }
+.pd-head { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+.pd-head strong { color:var(--pc); font-size:12.5px; }
+.pd-head .pd-clear { margin-left:auto; }
+.pd-meta { color:var(--muted); font-size:11px; }
+.pd-bar { height:4px; border-radius:999px; background:var(--pb); overflow:hidden; }
+.pd-bar span { display:block; height:100%; background:var(--pc); }
+.pd-group h4 { margin:0 0 4px; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.pd-group.progress h4 { color:var(--run); }
+.pd-group summary { cursor:pointer; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:4px; }
+.pd-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:4px; }
+button.pd-row { display:flex; align-items:center; gap:8px; min-width:0; text-align:left; text-transform:none; letter-spacing:normal; font-size:11.5px; font-weight:500; padding:4px 8px; background:var(--row); border-left:3px solid var(--pc); }
+button.pd-row .pd-id { color:var(--pc); font-weight:700; font-size:10.5px; white-space:nowrap; }
+button.pd-row .pd-title { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+button.pd-row .pd-model { color:var(--muted); font-size:9.5px; white-space:nowrap; }
+.pd-empty { color:var(--muted); font-size:11.5px; }
 .bcol.closed .ticket, .bcol.fin .ticket { opacity:.78; }
 .ticket-head { display:flex; justify-content:space-between; align-items:center; gap:8px; }
 .tid { color:var(--dim); font-size:10px; font-weight:600; letter-spacing:.06em; }
@@ -317,10 +346,12 @@ button.board-open { border-color:var(--run); color:var(--run); }
         <span class="roadmap-legend" id="roadmapMeta"></span>
       </div>
       <div class="roadmap-timeline" id="roadmapTimeline"></div>
+      <div class="phase-detail" id="phaseDetail" hidden></div>
     </div>
     <div class="btools">
       <input type="search" id="fSearch" placeholder="Search tickets" aria-label="Search id, title, label, or assignee">
       <select id="fSprint" aria-label="Filter by sprint"></select>
+      <select id="fState" aria-label="Filter by state"></select>
       <select id="fPriority" aria-label="Filter by priority">
         <option value="">All priorities</option>
         <option value="high">High priority</option>
@@ -629,8 +660,9 @@ const fSearch = document.getElementById("fSearch");
 const fSprint = document.getElementById("fSprint");
 const fPriority = document.getElementById("fPriority");
 const fTier = document.getElementById("fTier");
+const fState = document.getElementById("fState");
 const phaseMetricsEl = document.getElementById("phaseMetrics");
-const board = { id: null, data: null, metrics: null, limits: {}, dragging: false, busy: false, draft: "", draftTier: "dev-high", sprintSig: "", mobileStatus: "", pendingSprint: null };
+const board = { id: null, data: null, metrics: null, limits: {}, dragging: false, busy: false, draft: "", draftTier: "dev-high", sprintSig: "", mobileStatus: "", pendingSprint: null, openGroups: new Set() };
 const FINISHED = /^(done|closed)$/i;
 const FIRST_PAGE = 40;
 const FINISHED_PAGE = 15;
@@ -638,6 +670,8 @@ const FINISHED_PAGE = 15;
 function visibleTasks() {
   const q = fSearch.value.trim().toLowerCase();
   return board.data.tasks.filter((task) => {
+    if (fState.value === "__open") { if (FINISHED.test(task.status)) return false; }
+    else if (fState.value && task.status.toLowerCase() !== fState.value.toLowerCase()) return false;
     if (fSprint.value === "__none") { if (task.milestone) return false; }
     else if (fSprint.value && task.milestone !== fSprint.value) return false;
     if (fPriority.value === "__none") { if (task.priority) return false; }
@@ -651,7 +685,7 @@ function visibleTasks() {
 
 function syncToolbar() {
   const sprints = board.data.sprints;
-  const sig = JSON.stringify(sprints.map((sprint) => [sprint.id, sprint.title]));
+  const sig = JSON.stringify([sprints.map((sprint) => [sprint.id, sprint.title]), board.data.statuses]);
   if (sig === board.sprintSig) return;
   board.sprintSig = sig;
   const previous = fSprint.value;
@@ -665,6 +699,13 @@ function syncToolbar() {
   const options = [...fSprint.options].map((option) => option.value);
   if (pending && options.includes(pending)) fSprint.value = pending;
   else fSprint.value = options.includes(previous) ? previous : "";
+  const previousState = fState.value;
+  fState.replaceChildren(
+    el("option", { value: "", textContent: "All states" }),
+    el("option", { value: "__open", textContent: "Not finished" }),
+    ...board.data.statuses.map((status) => el("option", { value: status, textContent: status })),
+  );
+  fState.value = [...fState.options].some((option) => option.value === previousState) ? previousState : "";
 }
 
 async function moveTicket(taskId, status) {
@@ -711,7 +752,9 @@ function phaseClass(title) {
 
 function ticket(task, statuses, sprintTitles) {
   const priority = (task.priority || "").toLowerCase();
-  const node = el("article", { className: `ticket ${priority ? `p-${priority}` : ""}`, draggable: true });
+  const phaseCls = task.milestone && sprintTitles.has(task.milestone) ? phaseClass(sprintTitles.get(task.milestone)) : "";
+  const node = el("article", { className: `ticket ${priority ? `p-${priority}` : ""}${phaseCls}`, draggable: true });
+  node.dataset.id = task.id;
   node.ondragstart = (event) => {
     board.dragging = true;
     event.dataTransfer.setData("text/plain", task.id);
@@ -725,11 +768,11 @@ function ticket(task, statuses, sprintTitles) {
   ]));
   node.append(el("div", { className: "tt", textContent: task.title, title: task.title }));
   const meta = el("div", { className: "tmeta" });
-  if (task.priority) meta.append(el("span", { textContent: task.priority }));
   if (task.milestone && sprintTitles.has(task.milestone)) {
     const sprintTitle = sprintTitles.get(task.milestone);
-    meta.append(el("span", { className: phaseClass(sprintTitle).trim(), textContent: sprintTitle, title: "Sprint" }));
+    meta.append(el("span", { className: phaseClass(sprintTitle).trim(), textContent: sprintTitle, title: "Phase / sprint" }));
   }
+  if (task.priority) meta.append(el("span", { className: `pri pri-${priority}`, textContent: task.priority }));
   if (task.dueDate) {
     const late = !FINISHED.test(task.status) && task.dueDate < new Date().toISOString().slice(0, 10);
     meta.append(el("span", { className: late ? "due late" : "due", textContent: `due ${task.dueDate}` }));
@@ -962,6 +1005,7 @@ function showView() {
     board.sprintSig = "";
     phaseMetricsEl.hidden = true;
     document.getElementById("roadmapViz").hidden = true;
+    document.getElementById("phaseDetail").hidden = true;
     boardEl.replaceChildren();
     loadBoardData();
   } else {
@@ -969,7 +1013,7 @@ function showView() {
   }
 }
 
-for (const control of [fSearch, fSprint, fPriority, fTier]) control.addEventListener("input", renderBoard);
+for (const control of [fSearch, fSprint, fState, fPriority, fTier]) control.addEventListener("input", () => { renderBoard(); renderRoadmap(); });
 document.getElementById("boardBack").onclick = () => { location.hash = ""; };
 window.addEventListener("hashchange", showView);
 
@@ -991,14 +1035,88 @@ setInterval(() => {
   if (board.id) { if (!board.busy && !board.dragging && !editing) loadBoardData(); return; }
   if (!busy.size && !editing) refresh();
 }, 5000);
+function phaseTasks(milestoneId) {
+  return board.data ? board.data.tasks.filter((task) => task.milestone === milestoneId) : [];
+}
+
+function focusTicket(taskId) {
+  const find = () => boardEl.querySelector(`[data-id="${CSS.escape(taskId)}"]`);
+  let node = find();
+  if (!node) {
+    fState.value = ""; fSearch.value = ""; fPriority.value = ""; fTier.value = "";
+    renderBoard();
+    renderRoadmap();
+    node = find();
+  }
+  if (!node) return;
+  node.scrollIntoView({ block: "center", behavior: "smooth" });
+  node.classList.add("flash");
+  setTimeout(() => node.classList.remove("flash"), 1600);
+}
+
+function clearPhaseFilter() {
+  fSprint.value = "";
+  renderBoard();
+  renderRoadmap();
+}
+
+function renderPhaseDetail(phase, state) {
+  const panel = document.getElementById("phaseDetail");
+  if (!phase) { panel.hidden = true; panel.replaceChildren(); return; }
+  const tasks = phaseTasks(phase.milestoneId);
+  const statusOrder = board.data.statuses.map((status) => status.toLowerCase());
+  const rank = (status) => (/progress/i.test(status) ? 0 : FINISHED.test(status) ? 3 : 1);
+  const groups = new Map();
+  for (const task of tasks) {
+    if (!groups.has(task.status)) groups.set(task.status, []);
+    groups.get(task.status).push(task);
+  }
+  const ordered = [...groups.keys()].sort((a, b) => rank(a) - rank(b) || statusOrder.indexOf(a.toLowerCase()) - statusOrder.indexOf(b.toLowerCase()));
+  const pct = phase.percent || 0;
+  const gate = phase.gate ? `gate ${phase.gate.decision}${phase.gate.reviewer ? ` by ${phase.gate.reviewer}` : ""}` : "no gate decision yet";
+  const head = el("div", { className: "pd-head" }, [
+    el("strong", { textContent: phase.phase }),
+    el("span", { className: "rm-state", textContent: state }),
+    el("span", { className: "pd-meta", textContent: `${phase.done}/${phase.total} done \u00b7 ${pct}% \u00b7 ${gate}` }),
+    el("button", { className: "pd-clear", type: "button", textContent: "Show all phases", onclick: clearPhaseFilter }),
+  ]);
+  const row = (task) => el("button", { className: "pd-row", type: "button", title: task.title, onclick: () => focusTicket(task.id) }, [
+    el("span", { className: "pd-id", textContent: task.id }),
+    el("span", { className: "pd-title", textContent: task.title }),
+    el("span", { className: "pd-model", textContent: task.modelTier && MODEL_INFO[task.modelTier] ? MODEL_INFO[task.modelTier].provider : "no model" }),
+  ]);
+  const sections = [];
+  if (!ordered.some((status) => /progress/i.test(status))) {
+    sections.push(el("div", { className: "pd-empty", textContent: "No ticket is in progress in this phase." }));
+  }
+  for (const status of ordered) {
+    const list = groups.get(status);
+    const grid = el("div", { className: "pd-list" }, list.map(row));
+    if (FINISHED.test(status)) {
+      const key = `${phase.milestoneId}:${status}`;
+      const details = el("details", { className: "pd-group", open: board.openGroups.has(key) }, [el("summary", { textContent: `${status} \u00b7 ${list.length}` }), grid]);
+      details.ontoggle = () => { if (details.open) board.openGroups.add(key); else board.openGroups.delete(key); };
+      sections.push(details);
+    } else {
+      sections.push(el("div", { className: `pd-group${/progress/i.test(status) ? " progress" : ""}` }, [el("h4", { textContent: `${status} \u00b7 ${list.length}` }), grid]));
+    }
+  }
+  panel.className = `phase-detail${phaseClass(phase.phase)}`;
+  panel.replaceChildren(head, el("div", { className: "pd-bar" }, [el("span", { style: `width:${pct}%` })]), ...sections);
+  panel.hidden = false;
+}
+
 function renderRoadmap() {
   const viz = document.getElementById("roadmapViz");
   const phases = ((board.metrics && board.metrics.phases) || []).filter((phase) => /^Phase\s*\d+/i.test(phase.phase));
   viz.hidden = !phases.length;
-  if (!phases.length) return;
+  if (!phases.length) { renderPhaseDetail(null); return; }
   const activeId = (phases.find((phase) => !phase.completed && phase.total > 0) || {}).milestoneId || null;
+  const selectedId = fSprint.value;
   const nodes = [];
   let approved = 0;
+  let selected = null;
+  let selectedState = "";
   phases.forEach((phase, index) => {
     if (index) nodes.push(el("div", { className: "rm-link" }));
     const match = /^Phase\s*(\d+)\s*[-:\u2013]?\s*(.*)$/i.exec(phase.phase);
@@ -1009,16 +1127,26 @@ function renderRoadmap() {
     else if (decision === "rework") { cls = "active"; state = "rework"; }
     else if (phase.completed) { cls = "done"; state = "ready for gate"; }
     else if (phase.milestoneId === activeId) { cls = "active"; state = "in progress"; }
-    nodes.push(el("div", { className: `rm-node ${cls}${phaseClass(phase.phase)}`, title: phase.phase }, [
+    const isSelected = phase.milestoneId === selectedId;
+    if (isSelected) { selected = phase; selectedState = state; }
+    const node = el("button", {
+      type: "button",
+      className: `rm-node ${cls}${phaseClass(phase.phase)}${isSelected ? " selected" : ""}`,
+      title: `${phase.phase} \u2014 click to ${isSelected ? "show all phases" : "filter tickets"}`,
+      ariaPressed: String(isSelected),
+    }, [
       el("div", { className: "rm-dot", textContent: match ? match[1] : "\u2022" }),
       el("div", { className: "rm-name", textContent: (match && match[2]) || phase.phase }),
       el("div", { className: "rm-bar" }, [el("span", { style: `width:${phase.percent || 0}%` })]),
       el("div", { className: "rm-count", textContent: `${phase.done}/${phase.total}` }),
       el("div", { className: "rm-state", textContent: state }),
-    ]));
+    ]);
+    node.onclick = () => { fSprint.value = isSelected ? "" : phase.milestoneId; renderBoard(); renderRoadmap(); };
+    nodes.push(node);
   });
   document.getElementById("roadmapTimeline").replaceChildren(...nodes);
-  document.getElementById("roadmapMeta").textContent = `${phases.length} phases \u00b7 ${approved} approved`;
+  document.getElementById("roadmapMeta").textContent = `${phases.length} phases \u00b7 ${approved} approved \u00b7 click a phase to filter`;
+  renderPhaseDetail(selected, selectedState);
 }
 </script>
 </body>
