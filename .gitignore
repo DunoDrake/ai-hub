@@ -1,0 +1,6 @@
+# OS
+.DS_Store
+**/.DS_Store
+
+# Local generated audio and voice samples
+local-audio/

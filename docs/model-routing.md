@@ -48,12 +48,19 @@ backlog task create "Rename config keys" -l dev-low
 backlog task create "Polish loading screen" -l art
 ```
 
-Claim and execute:
+Choose and claim work safely through AI Hub's helper (from the AI Hub repo, or put `bin/backlog-phase.mjs` on `PATH`):
 
 ```bash
-backlog task list -s "To Do" -l dev-medium --unassigned --plain
+node bin/backlog-phase.mjs next --provider gpt --path /absolute/project
+node bin/backlog-phase.mjs claim TASK-12 --provider gpt --path /absolute/project
+```
+
+`next` returns one ready, unassigned To Do task sorted by priority then ordinal. `claim` uses an atomic local lock, validates status/readiness/tier, assigns `@gpt`, changes status to In Progress, then reads the task back to verify ownership. Use `--json` for automation and `--dry-run` to validate without writing. Do not claim with raw `backlog task edit`: two concurrent writers both return success and the last one silently wins.
+
+Read the claimed task:
+
+```bash
 backlog task view TASK-12 --plain
-backlog task edit TASK-12 -a @gpt -s "In Progress"
 ```
 
 Escalate without losing context:

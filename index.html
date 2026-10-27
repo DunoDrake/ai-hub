@@ -137,6 +137,26 @@ button.phase-open { border-color:var(--accent); color:var(--accent); }
 .col.prog b { color:var(--run); } .col.done b { color:var(--ok); }
 .now { min-width:0; color:var(--muted); font-size:10.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .now strong { color:var(--text); }
+.hchips { display:flex; flex-wrap:wrap; gap:4px; }
+.hchip { display:inline-flex; align-items:center; gap:5px; padding:1px 7px; border:1px solid var(--pb); border-radius:999px; font-size:10px; color:var(--muted); background:transparent; text-transform:none; letter-spacing:normal; font-weight:500; white-space:nowrap; }
+.hchip b { font-weight:700; color:var(--text); }
+.hchip.bad { color:var(--err); border-color:var(--err); }
+.hchip.bad b { color:var(--err); }
+.hchip.warn { color:var(--warn); border-color:var(--warn); }
+.hchip.warn b { color:var(--warn); }
+.hchip.ok { color:var(--ok); border-color:color-mix(in srgb, var(--ok) 55%, transparent); }
+button.hchip { cursor:pointer; }
+button.hchip:hover { border-color:var(--arrow); }
+button.hchip.active { outline:2px solid var(--run); outline-offset:1px; }
+.health-bar { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin:0 0 10px; padding:6px 12px; background:var(--panel); border:1px solid var(--pb); border-left:2px solid var(--accent); border-radius:3px; backdrop-filter:blur(12px); }
+.health-bar .hb-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); }
+.health-bar .hb-clear { margin-left:auto; font-size:10px; padding:2px 8px; }
+.ticket.stale { box-shadow:inset 0 0 0 1px var(--warn); }
+.ticket.blocked { opacity:.72; }
+.tmeta .flag { font-weight:600; }
+.tmeta .flag.stale { color:var(--warn); border-color:var(--warn); }
+.tmeta .flag.blocked { color:var(--err); border-color:var(--err); }
+.tmeta .flag.ready { color:var(--ok); border-color:var(--ok); }
 .actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; align-items:center; }
 .actions a.open { text-decoration:none; color:var(--accent-text); background:var(--accent); border:1px solid var(--accent); border-radius:3px; padding:6px 9px; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; }
 button.board-open { border-color:var(--run); color:var(--run); }
@@ -398,6 +418,7 @@ button.pd-row .pd-model { color:var(--muted); font-size:9.5px; white-space:nowra
       <div class="roadmap-timeline" id="roadmapTimeline"></div>
       <div class="phase-detail" id="phaseDetail" hidden></div>
     </div>
+    <div class="health-bar" id="healthBar" hidden></div>
     <div class="btools">
       <input type="search" id="fSearch" placeholder="Search tickets" aria-label="Search id, title, label, or assignee">
       <select id="fSprint" aria-label="Filter by sprint"></select>
@@ -513,6 +534,57 @@ function columnChips(summary) {
   }
   if (!summary.total) wrap.append(el("span", { className: "col", textContent: "No tasks" }));
   return wrap;
+}
+
+// One chip per protocol-health problem. Click handler is optional: the project card shows them
+// read-only, the board makes them filter buttons (see renderHealthBar).
+function healthChips(health, onPick, activeKey) {
+  if (!health || !health.total) return null;
+  const defs = [
+    { key: "noTier", label: "no model tier", n: health.noTier + health.multiTier, ids: [...health.ids.noTier, ...health.ids.multiTier], cls: "bad" },
+    { key: "doneNoAC", label: "Done without AC", n: health.ids.doneNoAC.length, ids: health.ids.doneNoAC, cls: "bad" },
+    { key: "doneAcOpen", label: "Done, AC unchecked", n: health.ids.doneAcOpen.length, ids: health.ids.doneAcOpen, cls: "warn" },
+    { key: "unassigned", label: "running, no owner", n: health.inProgressUnassigned, ids: health.ids.inProgressUnassigned, cls: "warn" },
+    { key: "stale", label: `stale >${health.staleHours}h`, n: health.stale, ids: health.ids.stale, cls: "warn" },
+    { key: "blocked", label: "blocked", n: health.blocked, ids: health.ids.blocked, cls: "" },
+  ].filter((def) => def.n > 0);
+  const wrap = el("div", { className: "hchips" });
+  if (!defs.length) {
+    wrap.append(el("span", { className: "hchip ok", textContent: "protocol OK" }));
+    return wrap;
+  }
+  for (const def of defs) {
+    const node = el(onPick ? "button" : "span", { className: `hchip ${def.cls}${activeKey === def.key ? " active" : ""}`, title: def.ids.join(", ") }, [el("b", { textContent: String(def.n) }), def.label]);
+    if (onPick) { node.type = "button"; node.onclick = () => onPick(def); }
+    wrap.append(node);
+  }
+  return wrap;
+}
+
+function healthIds(health, key) {
+  if (!health) return [];
+  if (key === "noTier") return [...health.ids.noTier, ...health.ids.multiTier];
+  if (key === "unassigned") return health.ids.inProgressUnassigned;
+  return health.ids[key] || [];
+}
+
+function renderHealthBar() {
+  const bar = document.getElementById("healthBar");
+  if (board.pendingHealth) {
+    healthFilter.key = board.pendingHealth;
+    healthFilter.ids = new Set(healthIds(board.data && board.data.health, board.pendingHealth));
+    board.pendingHealth = "";
+  }
+  const chips = board.data && healthChips(board.data.health, (def) => {
+    if (healthFilter.key === def.key) { healthFilter.key = ""; healthFilter.ids = null; }
+    else { healthFilter.key = def.key; healthFilter.ids = new Set(def.ids); fState.value = ""; }
+    renderBoard();
+  }, healthFilter.key);
+  if (!chips) { bar.hidden = true; bar.replaceChildren(); return; }
+  const clear = el("button", { className: "hb-clear", type: "button", textContent: "Clear", hidden: !healthFilter.key });
+  clear.onclick = () => { healthFilter.key = ""; healthFilter.ids = null; renderBoard(); };
+  bar.replaceChildren(el("span", { className: "hb-title", textContent: "Protocol health" }), chips, clear);
+  bar.hidden = false;
 }
 
 function inProgressList(summary) {
@@ -640,6 +712,13 @@ function protocolNotice(project) {
   return el("div", { className: "notice" }, [el("span", { textContent: "Model-routing instructions need an update" }), button]);
 }
 
+function openHealthBoard(projectId, key) {
+  board.pendingHealth = key;
+  const target = `#board/${projectId}`;
+  if (location.hash === target && board.id === projectId && board.data) renderBoard();
+  else location.hash = target;
+}
+
 function card(project) {
   const node = el("article", { className: `card ${project.exists ? "" : "missing"}` });
   const identity = el("div", { className: "identity" }, [
@@ -654,6 +733,8 @@ function card(project) {
     activity.append(columnChips(project.summary));
     const now = inProgressList(project.summary);
     if (now) activity.append(now);
+    const chips = healthChips(project.summary.health, (def) => openHealthBoard(project.id, def.key));
+    if (chips) activity.append(chips);
   }
   node.append(el("div", { className: "card-main" }, [identity, activity, actionRow(project)]));
   if (project.summary && !project.summary.error) {
@@ -811,15 +892,21 @@ const fPriority = document.getElementById("fPriority");
 const fTier = document.getElementById("fTier");
 const fState = document.getElementById("fState");
 const phaseMetricsEl = document.getElementById("phaseMetrics");
-const board = { id: null, data: null, metrics: null, limits: {}, dragging: false, busy: false, draft: "", draftTier: "dev-high", sprintSig: "", mobileStatus: "", pendingSprint: null, openGroups: new Set() };
+const board = { id: null, data: null, metrics: null, limits: {}, dragging: false, busy: false, draft: "", draftTier: "dev-high", sprintSig: "", mobileStatus: "", pendingSprint: null, pendingHealth: "", openGroups: new Set() };
 const FINISHED = /^(done|closed)$/i;
 const FIRST_PAGE = 40;
 const FINISHED_PAGE = 15;
 
+const healthFilter = { key: "", ids: null };
+
 function visibleTasks() {
   const q = fSearch.value.trim().toLowerCase();
   return board.data.tasks.filter((task) => {
+    if (healthFilter.ids) { if (!healthFilter.ids.has(task.id)) return false; }
     if (fState.value === "__open") { if (FINISHED.test(task.status)) return false; }
+    else if (fState.value === "__ready") { if (!/^to do$/i.test(task.status) || !task.isReady || task.assignees.length) return false; }
+    else if (fState.value === "__blocked") { if (FINISHED.test(task.status) || task.isReady) return false; }
+    else if (fState.value === "__stale") { if (!task.stale) return false; }
     else if (fState.value && task.status.toLowerCase() !== fState.value.toLowerCase()) return false;
     if (fSprint.value === "__none") { if (task.milestone) return false; }
     else if (fSprint.value && task.milestone !== fSprint.value) return false;
@@ -852,6 +939,9 @@ function syncToolbar() {
   fState.replaceChildren(
     el("option", { value: "", textContent: "All states" }),
     el("option", { value: "__open", textContent: "Not finished" }),
+    el("option", { value: "__ready", textContent: "Ready to claim" }),
+    el("option", { value: "__blocked", textContent: "Blocked" }),
+    el("option", { value: "__stale", textContent: "Stale (no update)" }),
     ...board.data.statuses.map((status) => el("option", { value: status, textContent: status })),
   );
   fState.value = [...fState.options].some((option) => option.value === previousState) ? previousState : "";
@@ -899,10 +989,18 @@ function phaseClass(title) {
   return match ? ` ph ph-${Number(match[1]) % PHASE_HUES}` : "";
 }
 
+function ageText(value) {
+  const ms = Date.now() - new Date(value).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return "";
+  const hours = Math.floor(ms / 3600000);
+  return hours >= 48 ? `${Math.floor(hours / 24)}d` : `${hours}h`;
+}
+
 function ticket(task, statuses, sprintTitles) {
   const priority = (task.priority || "").toLowerCase();
   const phaseCls = task.milestone && sprintTitles.has(task.milestone) ? phaseClass(sprintTitles.get(task.milestone)) : "";
-  const node = el("article", { className: `ticket ${priority ? `p-${priority}` : ""}${phaseCls}`, draggable: true });
+  const flagCls = `${task.stale ? " stale" : ""}${!task.isReady && !FINISHED.test(task.status) ? " blocked" : ""}`;
+  const node = el("article", { className: `ticket ${priority ? `p-${priority}` : ""}${phaseCls}${flagCls}`, draggable: true });
   node.dataset.id = task.id;
   node.ondragstart = (event) => {
     board.dragging = true;
@@ -922,6 +1020,15 @@ function ticket(task, statuses, sprintTitles) {
     meta.append(el("span", { className: phaseClass(sprintTitle).trim(), textContent: sprintTitle, title: "Phase / sprint" }));
   }
   if (task.priority) meta.append(el("span", { className: `pri pri-${priority}`, textContent: task.priority }));
+  if (task.stale) meta.append(el("span", { className: "flag stale", textContent: `stale ${ageText(task.updatedAt)}`.trim(), title: `In Progress, no update for over ${board.data.health ? board.data.health.staleHours : 24}h` }));
+  if (!task.isReady && !FINISHED.test(task.status)) {
+    const blockers = task.blockedBy || [];
+    const text = blockers.length ? `blocked by ${blockers.join(", ")}` : "blocked";
+    const flag = el("button", { className: "flag blocked", type: "button", textContent: text, title: task.blockedError || "A dependency is not Done yet" });
+    flag.onclick = () => { if (blockers[0]) focusTicket(blockers[0]); };
+    meta.append(flag);
+  }
+  else if (/^to do$/i.test(task.status) && !task.assignees.length) meta.append(el("span", { className: "flag ready", textContent: "ready", title: "Dependencies done, nobody has claimed it" }));
   if (task.dueDate) {
     const late = !FINISHED.test(task.status) && task.dueDate < new Date().toISOString().slice(0, 10);
     meta.append(el("span", { className: late ? "due late" : "due", textContent: `due ${task.dueDate}` }));
@@ -1032,6 +1139,7 @@ function renderBoard() {
   const data = board.data;
   if (!data) return;
   syncToolbar();
+  renderHealthBar();
   document.getElementById("boardTitle").textContent = data.project.name;
   const finishedCount = data.tasks.filter((task) => FINISHED.test(task.status)).length;
   document.getElementById("boardMeta").textContent = `${data.tasks.length} tickets, ${finishedCount} finished`;
@@ -1100,9 +1208,10 @@ function renderPhaseMetrics() {
   ]);
   const summary = [];
   if (metrics.trend.length) {
-    const chips = metrics.trend.flatMap((phase, index) => {
-      const chip = el("span", { className: "chip", textContent: `${phase.percent}%`, title: phase.phase });
-      return index === 0 ? [chip] : [el("span", { textContent: "→" }), chip];
+    const chips = [];
+    metrics.trend.forEach((phase, index) => {
+      if (index > 0) chips.push(el("span", { textContent: "→" }));
+      chips.push(el("span", { className: "chip", textContent: `${phase.percent}%`, title: phase.phase }));
     });
     summary.push(el("div", { className: "phase-trend" }, [el("span", { textContent: "Last 3 phases:" }), ...chips]));
   }
@@ -1155,6 +1264,8 @@ function showView() {
     phaseMetricsEl.hidden = true;
     document.getElementById("roadmapViz").hidden = true;
     document.getElementById("phaseDetail").hidden = true;
+    healthFilter.key = ""; healthFilter.ids = null;
+    document.getElementById("healthBar").hidden = true;
     boardEl.replaceChildren();
     loadBoardData();
   } else {
@@ -1192,7 +1303,8 @@ function focusTicket(taskId) {
   const find = () => boardEl.querySelector(`[data-id="${CSS.escape(taskId)}"]`);
   let node = find();
   if (!node) {
-    fState.value = ""; fSearch.value = ""; fPriority.value = ""; fTier.value = "";
+    fSprint.value = ""; fState.value = ""; fSearch.value = ""; fPriority.value = ""; fTier.value = "";
+    healthFilter.key = ""; healthFilter.ids = null;
     renderBoard();
     renderRoadmap();
     node = find();

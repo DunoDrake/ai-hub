@@ -35,6 +35,7 @@ const PROVIDER_ICONS = new Map([
 
 const children = new Map();
 const summaryCache = new Map();
+const taskDetailCache = new Map();
 
 class HttpError extends Error {
 	constructor(status, message) {
@@ -290,6 +291,7 @@ async function loadSummary(project) {
 		value.currentPhase = phase.currentPhase;
 		value.phaseProgress = phase.phaseProgress;
 		value.gateStatus = phase.gateStatus;
+		value.health = computeHealth(tasks);
 	}
 	summaryCache.set(project.id, { at: Date.now(), value });
 	return value;
@@ -514,6 +516,100 @@ function requireInitialized(id) {
 	return project;
 }
 
+const MODEL_TIER_SET = new Set(MODEL_TIERS);
+const parsedStaleHours = Number(process.env.AI_HUB_STALE_HOURS || 24);
+const STALE_HOURS = Number.isFinite(parsedStaleHours) && parsedStaleHours >= 0 ? parsedStaleHours : 24;
+
+// An "In Progress" ticket is stale when it has not been updated for STALE_HOURS. Only In Progress
+// qualifies: To Do tickets are waiting by design and Done/Closed tickets are finished.
+function isStale(task, now = Date.now()) {
+	if (!/^in progress$/i.test(task.status || "")) return false;
+	const stamp = task.updatedAt || task.createdAt;
+	const time = stamp ? new Date(stamp).getTime() : NaN;
+	return Number.isFinite(time) && now - time > STALE_HOURS * 3600 * 1000;
+}
+
+// Protocol-compliance counters from `backlog task list --json` rows. Pure: no I/O, no clock unless
+// `now` is omitted. Rates are null when the denominator is 0 so the UI never shows a fake 0%.
+function computeHealth(tasks, now = Date.now()) {
+	const rate = (num, den) => (den > 0 ? Math.round((num / den) * 1000) / 10 : null);
+	const tierCount = (task) => (task.labels || []).filter((label) => MODEL_TIER_SET.has(label)).length;
+	const open = tasks.filter((task) => !FINISHED_STATUS.test(task.status));
+	// Closed means abandoned/cancelled in the shared protocol, so Done-compliance counters deliberately
+	// measure status Done only; open/finished classification still treats both Done and Closed as final.
+	const done = tasks.filter((task) => /^done$/i.test(task.status));
+	const inProgress = tasks.filter((task) => /^in progress$/i.test(task.status));
+	const ids = (list) => list.map((task) => task.id);
+	const noTier = open.filter((task) => tierCount(task) === 0);
+	const multiTier = open.filter((task) => tierCount(task) > 1);
+	const doneNoAC = done.filter((task) => !(task.acceptanceCriteriaCount > 0));
+	const doneAcOpen = done.filter((task) => task.acceptanceCriteriaCount > 0 && task.acceptanceCriteriaCompleted < task.acceptanceCriteriaCount);
+	const unassigned = inProgress.filter((task) => !(task.assignees || []).length);
+	const stale = tasks.filter((task) => isStale(task, now));
+	const noPriority = open.filter((task) => !task.priority);
+	const blocked = open.filter((task) => task.isReady === false);
+	return {
+		total: tasks.length,
+		open: open.length,
+		doneTotal: done.length,
+		inProgress: inProgress.length,
+		oneTier: open.length - noTier.length - multiTier.length,
+		noTier: noTier.length,
+		multiTier: multiTier.length,
+		withAC: tasks.filter((task) => task.acceptanceCriteriaCount > 0).length,
+		doneWithAC: done.length - doneNoAC.length,
+		doneAcAllChecked: done.length - doneNoAC.length - doneAcOpen.length,
+		inProgressUnassigned: unassigned.length,
+		stale: stale.length,
+		noPriority: noPriority.length,
+		blocked: blocked.length,
+		rates: {
+			routed: rate(open.length - noTier.length - multiTier.length, open.length),
+			doneWithAC: rate(done.length - doneNoAC.length, done.length),
+			doneAcChecked: rate(done.length - doneNoAC.length - doneAcOpen.length, done.length),
+			inProgressAssigned: rate(inProgress.length - unassigned.length, inProgress.length),
+		},
+		// Ticket ids behind each counter, so the UI can filter to exactly the offending set.
+		ids: {
+			noTier: ids(noTier), multiTier: ids(multiTier), doneNoAC: ids(doneNoAC), doneAcOpen: ids(doneAcOpen),
+			inProgressUnassigned: ids(unassigned), stale: ids(stale), noPriority: ids(noPriority), blocked: ids(blocked),
+		},
+		staleHours: STALE_HOURS,
+		generatedAt: new Date(now).toISOString(),
+	};
+}
+
+async function loadHealth(id) {
+	const project = requireInitialized(id);
+	const output = await runBacklog(project.path, ["task", "list", "--json"], SUMMARY_TIMEOUT_MS);
+	return computeHealth(JSON.parse(output).tasks || []);
+}
+
+async function enrichBlocking(project, tasks) {
+	const blocked = tasks.filter((task) => !FINISHED_STATUS.test(task.status) && task.isReady === false);
+	const queue = [...blocked];
+	const results = new Map();
+	const worker = async () => {
+		while (queue.length) {
+			const task = queue.shift();
+			const key = `${project.path}\0${task.id}\0${task.updatedAt || task.createdAt || ""}`;
+			if (taskDetailCache.has(key)) { results.set(task.id, taskDetailCache.get(key)); continue; }
+			try {
+				const detail = JSON.parse(await runBacklog(project.path, ["task", "view", task.id, "--json"], SUMMARY_TIMEOUT_MS)).task;
+				const value = { blockedBy: (detail.readiness && detail.readiness.blockingDependencies) || [], blockedError: null };
+				const prefix = `${project.path}\0${task.id}\0`;
+				for (const cachedKey of taskDetailCache.keys()) if (cachedKey.startsWith(prefix) && cachedKey !== key) taskDetailCache.delete(cachedKey);
+				taskDetailCache.set(key, value);
+				results.set(task.id, value);
+			} catch (error) {
+				results.set(task.id, { blockedBy: [], blockedError: error.message });
+			}
+		}
+	};
+	await Promise.all(Array.from({ length: Math.min(6, queue.length) }, worker));
+	return results;
+}
+
 async function loadBoard(id) {
 	const project = requireInitialized(id);
 	const [statuses, output] = await Promise.all([
@@ -521,6 +617,7 @@ async function loadBoard(id) {
 		runBacklog(project.path, ["task", "list", "--json"], SUMMARY_TIMEOUT_MS),
 	]);
 	const tasks = JSON.parse(output).tasks || [];
+	const blocking = await enrichBlocking(project, tasks);
 	let sprints = [];
 	let sprintsError = null;
 	try {
@@ -545,9 +642,14 @@ async function loadBoard(id) {
 			milestone: task.milestone,
 			dueDate: task.dueDate,
 			updatedAt: task.updatedAt || task.createdAt || null,
+			isReady: task.isReady !== false,
+			stale: isStale(task),
+			blockedBy: blocking.has(task.id) ? blocking.get(task.id).blockedBy : [],
+			blockedError: blocking.has(task.id) ? blocking.get(task.id).blockedError : null,
 		})),
 		sprints,
 		sprintsError,
+		health: computeHealth(tasks),
 	};
 }
 
@@ -726,11 +828,12 @@ async function route(method, pathname, body, query = new URLSearchParams()) {
 	}
 	if (method === "GET" && pathname === "/api/fs") return listDirectories(query.get("path"));
 	if (method === "POST" && pathname === "/api/projects") return { project: await addProject(body) };
-	const match = /^\/api\/projects\/([a-f0-9]{8})(?:\/(start|stop|init|sprints|assign|protocol|board|move|closed|tasks|tier|metrics))?$/.exec(pathname);
+	const match = /^\/api\/projects\/([a-f0-9]{8})(?:\/(start|stop|init|sprints|assign|protocol|board|move|closed|tasks|tier|metrics|health))?$/.exec(pathname);
 	if (!match) throw new HttpError(404, "Not found");
 	const [, id, action] = match;
 	if (method === "GET" && action === "board") return loadBoard(id);
 	if (method === "GET" && action === "metrics") return loadMetrics(id);
+	if (method === "GET" && action === "health") return loadHealth(id);
 	if (method === "DELETE" && !action) return removeProject(id).then(() => ({ ok: true }));
 	if (method !== "POST" || !action) throw new HttpError(405, "Method not allowed");
 	const registry = readRegistry();

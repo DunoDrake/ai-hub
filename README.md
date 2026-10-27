@@ -6,6 +6,7 @@ Local manager for [Backlog.md](https://github.com/MrLesk/Backlog.md) project boa
 
 - Node.js 18+
 - `npm i -g backlog.md` (tested with 1.55.3)
+- `backlog-phase` on `PATH` for atomic agent claims. From this checkout: `mkdir -p ~/.local/bin && ln -sfn "$PWD/bin/backlog-phase.mjs" ~/.local/bin/backlog-phase` (ensure `~/.local/bin` is on `PATH`).
 
 ## Run
 
@@ -43,6 +44,17 @@ Provider marks are local monochrome SVGs from [Lobe Icons](https://github.com/lo
 | Provider icons | `assets/providers/` (local SVGs; no runtime CDN dependency) |
 
 AI Hub never reads or writes task files itself. It shells out to `backlog` (`init`, `task list --json`, `browser`).
+
+### Agent work selection
+
+Use `bin/backlog-phase.mjs` to choose and atomically claim work without two agents overwriting each other:
+
+```bash
+node bin/backlog-phase.mjs next --provider gpt --path /absolute/project
+node bin/backlog-phase.mjs claim TASK-12 --provider gpt --path /absolute/project
+```
+
+The board's **Protocol health** chips expose missing model tiers, Done tickets without acceptance criteria, unchecked AC, unassigned/stale In Progress work, and blocked tasks. Clicking a chip filters to the exact tickets. State filters also include **Ready to claim**, **Blocked**, and **Stale**.
 
 ## Docs
 

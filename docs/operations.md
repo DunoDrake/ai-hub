@@ -8,6 +8,7 @@
 | `AI_HUB_DATA_DIR` | `~/.config/ai-hub` | Registry and dashboard logs |
 | `BACKLOG_BIN` | `backlog` | Backlog.md CLI path |
 | `AI_HUB_DASH_FROM` / `AI_HUB_DASH_TO` | `6500` / `6599` | Dashboard port range |
+| `AI_HUB_STALE_HOURS` | `24` | In Progress age threshold for the `stale` chip/filter; nonnegative number |
 
 ## macOS LaunchAgent
 

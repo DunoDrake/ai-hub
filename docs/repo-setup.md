@@ -2,6 +2,16 @@
 
 Use AI Hub for setup. It keeps Backlog.md and provider instruction files consistent.
 
+Before agents claim work, install AI Hub's helper once on the workstation:
+
+```bash
+mkdir -p ~/.local/bin
+ln -sfn /absolute/path/to/ai-hub/bin/backlog-phase.mjs ~/.local/bin/backlog-phase
+backlog-phase --help
+```
+
+`backlog-phase claim` provides the local atomic claim lock. Do not replace it with raw `backlog task edit -a ... -s "In Progress"`; concurrent raw claims silently overwrite each other.
+
 ## New repository
 
 1. Add the absolute repository path in AI Hub.

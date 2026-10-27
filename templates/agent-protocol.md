@@ -18,16 +18,17 @@ Provider assignee handles are `@claude`, `@gpt`, `@gemini`, and `@deepseek`. Do 
 ### Execution workflow
 
 1. **Resume your work first.** At session start, list tasks assigned to your provider with `backlog task list -a @<provider> --plain`. Resume any assigned In Progress task before claiming another.
-2. **Claim one compatible task.** List the required routing label in To Do, for example `backlog task list -s "To Do" -l dev-low --unassigned --plain`. Read it with `backlog task view <id> --plain`, then claim it using `backlog task edit <id> -a @<provider> -s "In Progress"`.
-3. **Respect routing boundaries.** Claude may take any dev tier when needed. GPT may take `dev-medium` and `art`. Gemini takes `art`. DeepSeek takes `dev-low`. Never silently work outside those boundaries.
-4. **Escalate instead of stretching.** If the task exceeds the assigned tier, append a concrete note, replace the routing label with the next correct tier, clear the assignee, and return it to To Do. Example: `backlog task edit <id> --remove-label dev-low --add-label dev-medium -a "" -s "To Do" --append-notes "Escalated: <reason>"`.
-5. **One task per session.** Split it if it will not fit in one context window. Every split task must receive its own routing label.
-6. **Plan before code.** Write the plan with `backlog task edit <id> --plan "..."` and wait for the user to approve it.
-7. **Leave breadcrumbs.** After each milestone run `backlog task edit <id> --append-notes "what changed, what is next, blockers"`.
-8. **Finish cleanly.** Check acceptance criteria with `--check-ac`, write `--final-summary`, then set status to Done. If the project has a Closed status, use it only for abandoned or intentionally cancelled work and record why in the final summary.
-9. **Review higher-risk work.** After implementation, add `needs-review`, clear the assignee, and leave the task In Progress. `dev-high` requires another Claude session; GPT may review bounded implementation details but cannot approve architecture. Claude reviews `dev-medium`. `art` is reviewed by the peer art provider (Gemini reviews GPT; GPT reviews Gemini). The reviewer records evidence in notes, removes `needs-review`, and marks Done. `dev-low` may finish directly when verification passes.
-10. **Sprints.** A sprint is a Backlog.md milestone. List it with `backlog task list -m "<sprint>" --plain`; create or move tasks with `-m "<sprint>"`. Do not create sprints unless the user asks.
-11. **Report from evidence.** Summarize from task status, notes, and final summary; do not invent progress.
+2. **Choose one compatible ready task.** Run `backlog-phase next --provider <provider> --path .`. It returns one To Do task that is unassigned, dependency-ready, and within the provider's routing boundary, ordered by priority then ordinal. Read it with `backlog task view <id> --plain`.
+3. **Claim atomically.** Run `backlog-phase claim <id> --provider <provider> --path .`. Never claim with raw `backlog task edit`: concurrent raw claims both report success and the last writer silently wins. If `backlog-phase` is missing, stop and ask the operator to install AI Hub's `bin/backlog-phase.mjs` on `PATH`; do not bypass the claim lock.
+4. **Respect routing boundaries.** Claude may take `dev-high`, `dev-medium`, or `dev-low`. GPT may take `dev-medium` or `art`. Gemini takes `art`. DeepSeek takes `dev-low`. Never silently work outside those boundaries.
+5. **Escalate instead of stretching.** If the task exceeds the assigned tier, append a concrete note, replace the routing label with the next correct tier, clear the assignee, and return it to To Do. Example: `backlog task edit <id> --remove-label dev-low --add-label dev-medium -a "" -s "To Do" --append-notes "Escalated: <reason>"`.
+6. **One task per session.** Split it if it will not fit in one context window. Every split task must receive its own routing label.
+7. **Plan before code.** Write the plan with `backlog task edit <id> --plan "..."` and wait for the user to approve it.
+8. **Leave breadcrumbs.** After each milestone run `backlog task edit <id> --append-notes "what changed, what is next, blockers"`.
+9. **Finish cleanly.** Check acceptance criteria with `--check-ac`, write `--final-summary`, then set status to Done. If the project has a Closed status, use it only for abandoned or intentionally cancelled work and record why in the final summary.
+10. **Review higher-risk work.** After implementation, add `needs-review`, clear the assignee, and leave the task In Progress. `dev-high` requires another Claude session; GPT may review bounded implementation details but cannot approve architecture. Claude reviews `dev-medium`. `art` is reviewed by the peer art provider (Gemini reviews GPT; GPT reviews Gemini). The reviewer records evidence in notes, removes `needs-review`, and marks Done. `dev-low` may finish directly when verification passes.
+11. **Sprints.** A sprint is a Backlog.md milestone. List it with `backlog task list -m "<sprint>" --plain`; create or move tasks with `-m "<sprint>"`. Do not create sprints unless the user asks.
+12. **Report from evidence.** Summarize from task status, notes, and final summary; do not invent progress.
 
 ### Intake rule
 

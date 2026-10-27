@@ -21,6 +21,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
 import { execFile } from "node:child_process";
 
 const BACKLOG_BIN = process.env.BACKLOG_BIN || "backlog";
@@ -413,7 +414,8 @@ async function cmdAdvance(cwd, phaseArg, opts) {
 
 	if (!opts.force) {
 		const checks = await runChecks(cwd, phase, tasks);
-		const gateOk = latestGateDecision(cwd, phase.id)?.decision === "approved";
+		const gateDecision = latestGateDecision(cwd, phase.id);
+		const gateOk = gateDecision && gateDecision.decision === "approved";
 		if (!checksPass(checks) || !gateOk) {
 			reportIssues(checks);
 			if (!gateOk) console.log(`\nNo "approved" gate decision recorded for ${phase.title} (${phase.id}). Run: backlog-phase gate ${phase.id} --approve`);
@@ -465,6 +467,105 @@ async function cmdAdvance(cwd, phaseArg, opts) {
 	return 0;
 }
 
+const PROVIDER_TIERS = {
+	claude: ["dev-high", "dev-medium", "dev-low"],
+	gpt: ["dev-medium", "art"],
+	gemini: ["art"],
+	deepseek: ["dev-low"],
+};
+const ROUTING_TIERS = ["dev-high", "dev-medium", "dev-low", "art"];
+const PRIORITY_RANK = { high: 0, medium: 1, low: 2 };
+
+async function cmdNext(cwd, opts) {
+	const provider = (opts.provider || "").toLowerCase().replace(/^@/, "");
+	const allowed = PROVIDER_TIERS[provider];
+	if (!allowed) throw new CliError(`Unknown --provider "${opts.provider || ""}". Expected: ${Object.keys(PROVIDER_TIERS).join(", ")}`);
+	const data = await runBacklogJson(cwd, ["task", "list", "--json"], LIST_TIMEOUT_MS);
+	const tasks = (data.tasks || []).filter((task) => {
+		if (!/^to do$/i.test(task.status || "")) return false;
+		if (task.isReady === false || (task.assignees || []).length) return false;
+		const tiers = (task.labels || []).filter((label) => ROUTING_TIERS.includes(label));
+		return tiers.length === 1 && allowed.includes(tiers[0]);
+	});
+	tasks.sort((a, b) => {
+		const aPriority = PRIORITY_RANK[(a.priority || "").toLowerCase()];
+		const bPriority = PRIORITY_RANK[(b.priority || "").toLowerCase()];
+		const pa = aPriority === undefined ? 3 : aPriority;
+		const pb = bPriority === undefined ? 3 : bPriority;
+		const aOrdinal = a.ordinal === undefined || a.ordinal === null ? Number.MAX_SAFE_INTEGER : a.ordinal;
+		const bOrdinal = b.ordinal === undefined || b.ordinal === null ? Number.MAX_SAFE_INTEGER : b.ordinal;
+		return pa - pb || aOrdinal - bOrdinal || a.id.localeCompare(b.id);
+	});
+	const task = tasks[0] || null;
+	const output = { provider, allowedTiers: allowed, task: task ? {
+		id: task.id, title: task.title, status: task.status, priority: task.priority, milestone: task.milestone,
+		labels: task.labels || [], tier: (task.labels || []).find((label) => allowed.includes(label)), ordinal: task.ordinal,
+	} : null };
+	if (opts.json) console.log(JSON.stringify(output, null, 2));
+	else if (!task) console.log(`No ready, unassigned To Do ticket for ${provider} (${allowed.join(", ")}).`);
+	else console.log(`${task.id}  ${task.priority || "no-priority"}  ${output.task.tier}  ${task.title}`);
+	return 0;
+}
+
+const CLAIM_LOCK_MAX_MS = 60000;
+
+function claimLockPath(cwd, taskId) {
+	const project = crypto.createHash("sha256").update(fs.realpathSync(cwd)).digest("hex").slice(0, 12);
+	const safeTask = taskId.toLowerCase().replace(/[^a-z0-9.-]/g, "-");
+	return path.join(DATA_DIR, "locks", `${project}-${safeTask}.lock`);
+}
+
+function acquireClaimLock(lock) {
+	fs.mkdirSync(path.dirname(lock), { recursive: true });
+	for (let attempt = 0; attempt < 3; attempt++) {
+		try {
+			fs.mkdirSync(lock);
+			fs.writeFileSync(path.join(lock, "owner.json"), JSON.stringify({ pid: process.pid, at: new Date().toISOString() }) + "\n");
+			return;
+		} catch (error) {
+			if (error.code !== "EEXIST") throw error;
+			let age = 0;
+			try { age = Date.now() - fs.statSync(lock).mtimeMs; } catch { continue; }
+			if (age > CLAIM_LOCK_MAX_MS && attempt < 2) { fs.rmSync(lock, { recursive: true, force: true }); continue; }
+			throw new CliError("Claim already in progress for this ticket. Try again after it finishes.");
+		}
+	}
+}
+
+async function cmdClaim(cwd, taskId, opts) {
+	const provider = (opts.provider || "").toLowerCase().replace(/^@/, "");
+	const allowed = PROVIDER_TIERS[provider];
+	if (!allowed) throw new CliError(`Unknown --provider "${opts.provider || ""}". Expected: ${Object.keys(PROVIDER_TIERS).join(", ")}`);
+	if (!/^[A-Za-z]+-\d+(?:\.\d+)*$/.test(taskId || "")) throw new CliError("claim needs a task id like TASK-12");
+	const lock = claimLockPath(cwd, taskId);
+	acquireClaimLock(lock);
+	try {
+		const before = await loadTaskDetail(cwd, taskId);
+		const tiers = (before.labels || []).filter((label) => ROUTING_TIERS.includes(label));
+		if (!/^to do$/i.test(before.status || "")) throw new CliError(`${taskId} is ${before.status}, not To Do.`);
+		if (before.isReady === false) throw new CliError(`${taskId} is blocked and is not ready to claim.`);
+		if ((before.assignees || []).length) throw new CliError(`${taskId} is already assigned to ${(before.assignees || []).join(", ")}.`);
+		if (tiers.length !== 1) throw new CliError(`${taskId} must have exactly one routing tier; found ${tiers.length}.`);
+		if (!allowed.includes(tiers[0])) throw new CliError(`${provider} cannot claim ${tiers[0]} work.`);
+		if (opts.dryRun) {
+			const preview = { dryRun: true, task: taskId, provider, assignee: `@${provider}`, tier: tiers[0] };
+			if (opts.json) console.log(JSON.stringify(preview, null, 2)); else console.log(`[dry-run] would claim ${taskId} for @${provider} (${tiers[0]}).`);
+			return 0;
+		}
+		await runBacklog(cwd, ["task", "edit", taskId, "-a", `@${provider}`, "-s", "In Progress"], RUN_TIMEOUT_MS);
+		const after = await loadTaskDetail(cwd, taskId);
+		if (!/^in progress$/i.test(after.status || "") || !(after.assignees || []).includes(`@${provider}`)) {
+			throw new CliError(`Claim verification failed for ${taskId}; observed ${after.status} assigned to ${(after.assignees || []).join(", ") || "nobody"}.`);
+		}
+		const result = { claimed: true, task: taskId, provider, assignee: `@${provider}`, tier: tiers[0] };
+		if (opts.json) console.log(JSON.stringify(result, null, 2)); else console.log(`Claimed ${taskId} for @${provider} (${tiers[0]}).`);
+		return 0;
+	} finally {
+		fs.rmSync(lock, { recursive: true, force: true });
+	}
+}
+
+
 // ---- argv parsing ----
 
 const HELP = `backlog-phase: automation for the phase-driven Backlog.md roadmap
@@ -474,12 +575,23 @@ Usage:
   backlog-phase check   <PHASE> [options]     validate all tasks Done and referenced docs exist
   backlog-phase gate    <PHASE> [options]     gate checklist (docs, code review, tests); record a decision
   backlog-phase advance <PHASE> [options]     create the next phase's milestone + tickets from a template
+  backlog-phase next --provider <name>        print the highest-priority ready ticket for an agent
+  backlog-phase claim <TASK-ID> --provider <name>  atomically assign a ready ticket and start it
 
 Global options:
   --path <dir>          project directory (default: current directory)
   --project <id|name>   resolve the project path from the AI Hub registry
   --json                 machine-readable output
   -h, --help              show this help
+
+next options:
+  --provider <name>       claude | gpt | gemini | deepseek (leading @ is accepted)
+  --json                  include allowed tiers and the selected task
+
+claim options:
+  --provider <name>       required; same provider boundaries as next
+  --dry-run               validate claim without changing the ticket
+  --json                  machine-readable claim result
 
 gate options:
   --approve              record an "approved" decision (requires checks to pass unless --force)
@@ -516,6 +628,9 @@ function parseArgs(argv) {
 				break;
 			case "--project":
 				opts.project = next();
+				break;
+			case "--provider":
+				opts.provider = next();
 				break;
 			case "--json":
 				opts.json = true;
@@ -583,6 +698,12 @@ async function main() {
 			return cmdGate(cwd, phaseArg, opts);
 		case "advance":
 			return cmdAdvance(cwd, phaseArg, opts);
+		case "next":
+			if (!opts.provider) throw new CliError("Usage: backlog-phase next --provider <claude|gpt|gemini|deepseek>");
+			return cmdNext(cwd, opts);
+		case "claim":
+			if (!phaseArg || !opts.provider) throw new CliError("Usage: backlog-phase claim <TASK-ID> --provider <claude|gpt|gemini|deepseek>");
+			return cmdClaim(cwd, phaseArg, opts);
 		default:
 			throw new CliError(`Unknown command: ${command}\n\n${HELP}`);
 	}
