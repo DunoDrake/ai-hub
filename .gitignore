@@ -4,3 +4,11 @@
 
 # Local generated audio and voice samples
 local-audio/
+
+# Video projects and rendered outputs
+videos/
+
+# Local IDE and scratch tools
+.commandcode/
+clone_voice_local.py
+voice_clone.sh
