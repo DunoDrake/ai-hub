@@ -336,6 +336,55 @@ function validateProjectPath(rawPath) {
 	return fs.realpathSync(expanded);
 }
 
+// Read-only folder browser for the "Add project" popup. Lists only sub-directories of one
+// directory; it never reads file contents and never writes anything. The server is already
+// bound to 127.0.0.1 and host-checked, so this exposes nothing beyond the local user's own view.
+function listDirectories(rawPath) {
+	const requested = typeof rawPath === "string" && rawPath.trim() ? rawPath.trim() : os.homedir();
+	const expanded = requested.replace(/^~(?=$|\/)/, os.homedir());
+	if (!path.isAbsolute(expanded)) throw new HttpError(400, "path must be absolute");
+	let dir;
+	try {
+		dir = fs.realpathSync(expanded);
+		if (!fs.statSync(dir).isDirectory()) throw new Error("not a directory");
+	} catch {
+		throw new HttpError(400, "directory does not exist");
+	}
+	let entries;
+	try {
+		entries = fs.readdirSync(dir, { withFileTypes: true });
+	} catch (error) {
+		throw new HttpError(403, `cannot read directory: ${error.code || error.message}`);
+	}
+	const registered = new Set(readRegistry().projects.map((entry) => entry.path));
+	const directories = [];
+	for (const entry of entries) {
+		if (entry.name.startsWith(".")) continue;
+		const full = path.join(dir, entry.name);
+		let isDir = entry.isDirectory();
+		if (!isDir && entry.isSymbolicLink()) {
+			try { isDir = fs.statSync(full).isDirectory(); } catch { isDir = false; }
+		}
+		if (!isDir) continue;
+		let real = full;
+		try { real = fs.realpathSync(full); } catch { /* keep the link path */ }
+		const info = inspectDirectory(real);
+		directories.push({ name: entry.name, path: real, isGit: info.isGit, initialized: info.initialized, added: registered.has(real) });
+	}
+	directories.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+	const parent = path.dirname(dir);
+	const here = inspectDirectory(dir);
+	return {
+		path: dir,
+		parent: parent === dir ? null : parent,
+		home: os.homedir(),
+		isGit: here.isGit,
+		initialized: here.initialized,
+		added: registered.has(dir),
+		directories,
+	};
+}
+
 function addProject(body) {
 	const resolved = validateProjectPath(body.path);
 	const registry = readRegistry();
@@ -670,11 +719,12 @@ function refreshProtocol(id) {
 	applyProtocol(project.path);
 }
 
-async function route(method, pathname, body) {
+async function route(method, pathname, body, query = new URLSearchParams()) {
 	if (method === "GET" && pathname === "/api/projects") {
 		const registry = readRegistry();
 		return { projects: await Promise.all(registry.projects.map(describeProject)) };
 	}
+	if (method === "GET" && pathname === "/api/fs") return listDirectories(query.get("path"));
 	if (method === "POST" && pathname === "/api/projects") return { project: await addProject(body) };
 	const match = /^\/api\/projects\/([a-f0-9]{8})(?:\/(start|stop|init|sprints|assign|protocol|board|move|closed|tasks|tier|metrics))?$/.exec(pathname);
 	if (!match) throw new HttpError(404, "Not found");
@@ -771,7 +821,7 @@ async function handle(req, res) {
 			return;
 		}
 		const body = req.method === "GET" || req.method === "DELETE" ? {} : await readBody(req);
-		sendJson(res, 200, await route(req.method, pathname, body));
+		sendJson(res, 200, await route(req.method, pathname, body, searchParams));
 	} catch (error) {
 		const status = error instanceof HttpError ? error.status : 500;
 		sendJson(res, status, { error: error.message });

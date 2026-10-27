@@ -53,9 +53,37 @@ header .sub { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 main { max-width:1560px; margin:0 auto; padding:8px 16px 48px; }
 main.wide { max-width:1920px; }
 
-.add { display:grid; grid-template-columns:minmax(280px,1fr) minmax(160px,240px) auto; gap:0; padding:0; margin-bottom:10px; background:var(--panel); border:1px solid var(--pb); border-left:2px solid var(--accent); border-radius:3px; backdrop-filter:blur(12px); }
-.add input { background:transparent; border:0; border-right:1px solid var(--pb); border-radius:0; }
-.add button { margin:5px; }
+.add { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 6px 6px 12px; margin-bottom:10px; background:var(--panel); border:1px solid var(--pb); border-left:2px solid var(--accent); border-radius:3px; backdrop-filter:blur(12px); }
+.add .hint { color:var(--muted); font-size:11px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.add button { flex:0 0 auto; }
+dialog.picker { width:min(640px, calc(100vw - 24px)); max-height:min(640px, calc(100vh - 24px)); padding:0; color:var(--text); background:var(--bg); border:1px solid var(--arrow); border-left:2px solid var(--accent); border-radius:4px; box-shadow:0 24px 80px rgba(0,0,0,.55); }
+dialog.picker[open] { display:flex; flex-direction:column; }
+dialog.picker::backdrop { background:rgba(2,6,16,.62); backdrop-filter:blur(3px); }
+.pk-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-bottom:1px solid var(--pb); }
+.pk-head h2 { margin:0; font-size:12px; text-transform:uppercase; letter-spacing:.07em; }
+.pk-bar { display:flex; gap:6px; padding:8px 12px; border-bottom:1px solid var(--pb); }
+.pk-bar input { flex:1; min-width:0; }
+.pk-bar button { flex:0 0 auto; }
+.pk-crumbs { display:flex; flex-wrap:wrap; align-items:center; gap:2px; padding:6px 12px; font-size:11px; color:var(--muted); border-bottom:1px solid var(--pb); }
+.pk-crumbs button { border:0; background:transparent; padding:1px 4px; text-transform:none; letter-spacing:normal; font-size:11px; color:var(--run); }
+.pk-list { flex:1; min-height:180px; overflow-y:auto; padding:4px 6px; display:flex; flex-direction:column; gap:1px; }
+.pk-row { display:flex; align-items:center; gap:8px; width:100%; text-align:left; border:0; border-radius:3px; background:transparent; padding:6px 8px; text-transform:none; letter-spacing:normal; font-size:12.5px; font-weight:500; }
+.pk-row:hover, .pk-row:focus-visible { background:var(--row); }
+.pk-row.selected { background:color-mix(in srgb, var(--accent) 16%, transparent); outline:1px solid var(--accent); }
+.pk-row .pk-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pk-row .pk-tag { font-size:9.5px; padding:0 6px; border:1px solid var(--pb); border-radius:999px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; white-space:nowrap; }
+.pk-row .pk-tag.git { color:var(--run); border-color:var(--run); }
+.pk-row .pk-tag.bl { color:var(--ok); border-color:var(--ok); }
+.pk-row .pk-tag.added { color:var(--muted); }
+.pk-row.disabled { opacity:.5; }
+.pk-empty { padding:24px 12px; text-align:center; color:var(--muted); font-size:12px; }
+.pk-foot { display:grid; grid-template-columns:1fr auto; gap:8px 10px; align-items:center; padding:10px 12px; border-top:1px solid var(--pb); }
+.pk-foot .pk-sel { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11.5px; color:var(--muted); }
+.pk-foot .pk-sel b { color:var(--text); font-weight:600; }
+.pk-foot input { grid-column:1; min-width:0; }
+.pk-foot .pk-actions { grid-column:2; grid-row:1 / span 2; display:flex; gap:6px; align-self:end; }
+.pk-err { grid-column:1 / -1; min-height:0; font-size:11px; color:var(--err); }
+.pk-err:empty { display:none; }
 .model-rail { display:flex; flex-wrap:wrap; gap:0; margin:0 0 10px; background:var(--panel); border:1px solid var(--pb); border-left:2px solid var(--accent); border-radius:3px; backdrop-filter:blur(12px); }
 .provider-badge { min-width:0; display:inline-flex; align-items:center; gap:7px; padding:6px 10px; border:0; border-left:1px solid var(--pb); border-radius:0; color:var(--text); background:transparent; font-size:10px; line-height:1; white-space:nowrap; text-transform:uppercase; letter-spacing:.06em; }
 .provider-badge:first-child { border-left:0; }
@@ -246,9 +274,10 @@ button.pd-row .pd-model { color:var(--muted); font-size:9.5px; white-space:nowra
   header .sub { max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .theme-btn { padding:4px 7px; }
   main, main.wide { padding:6px 10px 40px; }
-  .add { grid-template-columns:1fr auto; }
-  .add .path { grid-column:1/-1; border-bottom:1px solid var(--pb); }
-  .add .name { min-width:0; }
+  .add .hint { display:none; }
+  .pk-foot { grid-template-columns:1fr; }
+  .pk-foot .pk-actions { grid-column:1; grid-row:auto; justify-content:flex-end; }
+  .pk-bar { flex-wrap:wrap; }
   .model-rail { flex-wrap:nowrap; overflow-x:auto; padding-bottom:0; }
   .provider-badge { flex:0 0 auto; }
   .card-main { grid-template-columns:1fr; gap:10px; }
@@ -322,11 +351,32 @@ button.pd-row .pd-model { color:var(--muted); font-size:9.5px; white-space:nowra
   <button class="theme-btn" id="theme" type="button" aria-label="Toggle light or dark theme"></button>
 </header>
 <main id="main">
-  <form class="add" id="addForm">
-    <input class="path" id="pathInput" placeholder="Absolute repository path" aria-label="Project path" required>
-    <input class="name" id="nameInput" placeholder="Display name (optional)" aria-label="Project name">
-    <button class="primary" type="submit">Add project</button>
-  </form>
+  <div class="add" id="addForm">
+    <span class="hint">Pick a repository folder to manage with Backlog.md</span>
+    <button class="primary" id="addOpen" type="button">Add project</button>
+  </div>
+  <dialog class="picker" id="picker" aria-labelledby="pkTitle">
+    <div class="pk-head">
+      <h2 id="pkTitle">Add project · choose a folder</h2>
+      <button type="button" id="pkClose" aria-label="Close">✕</button>
+    </div>
+    <div class="pk-bar">
+      <button type="button" id="pkUp" title="Parent folder">↑ Up</button>
+      <button type="button" id="pkHome" title="Home folder">⌂ Home</button>
+      <input id="pkPath" aria-label="Folder path" placeholder="Type or paste a path, press Enter" spellcheck="false" autocomplete="off">
+    </div>
+    <div class="pk-crumbs" id="pkCrumbs"></div>
+    <div class="pk-list" id="pkList" role="listbox" aria-label="Folders"></div>
+    <form class="pk-foot" id="pkForm">
+      <div class="pk-sel" id="pkSel"></div>
+      <input id="pkName" aria-label="Project name" placeholder="Display name (optional)" maxlength="80" autocomplete="off">
+      <div class="pk-actions">
+        <button type="button" id="pkCancel">Cancel</button>
+        <button class="primary" type="submit" id="pkAdd">Add this folder</button>
+      </div>
+      <div class="pk-err" id="pkErr" role="alert"></div>
+    </form>
+  </dialog>
   <div class="model-rail" id="modelRail" aria-label="Model routing legend"></div>
   <div class="msg" id="msg" role="status" aria-live="polite"></div>
   <div class="grid" id="grid"></div>
@@ -635,18 +685,117 @@ async function refresh() {
   }
 }
 
-document.getElementById("addForm").onsubmit = async (event) => {
-  event.preventDefault();
-  const path = document.getElementById("pathInput");
-  const name = document.getElementById("nameInput");
+const picker = {
+  dlg: document.getElementById("picker"),
+  list: document.getElementById("pkList"),
+  crumbs: document.getElementById("pkCrumbs"),
+  path: document.getElementById("pkPath"),
+  sel: document.getElementById("pkSel"),
+  name: document.getElementById("pkName"),
+  err: document.getElementById("pkErr"),
+  add: document.getElementById("pkAdd"),
+  state: null,
+  chosen: "",
+  busy: false,
+};
+
+function pickerError(text) { picker.err.textContent = text || ""; }
+
+function pickerSelect(dir) {
+  picker.chosen = dir ? dir.path : "";
+  picker.sel.replaceChildren();
+  if (dir) {
+    picker.sel.append("Add: ", el("b", { textContent: dir.path }));
+    picker.sel.title = dir.path;
+  }
+  picker.add.disabled = !dir || dir.added;
+  if (dir && dir.added) pickerError("This folder is already added.");
+  else pickerError("");
+  for (const row of picker.list.querySelectorAll(".pk-row")) row.classList.toggle("selected", row.dataset.path === picker.chosen);
+}
+
+function pickerCrumbs(dirPath) {
+  const parts = dirPath.split("/").filter(Boolean);
+  const nodes = [el("button", { type: "button", textContent: "/", onclick: () => pickerLoad("/") })];
+  let acc = "";
+  for (const part of parts) {
+    acc += `/${part}`;
+    const target = acc;
+    nodes.push(el("span", { textContent: "›" }), el("button", { type: "button", textContent: part, onclick: () => pickerLoad(target) }));
+  }
+  picker.crumbs.replaceChildren(...nodes);
+  picker.crumbs.scrollLeft = picker.crumbs.scrollWidth;
+}
+
+async function pickerLoad(dirPath) {
+  pickerError("");
   try {
-    await api("POST", "/api/projects", { path: path.value, name: name.value });
-    path.value = "";
-    name.value = "";
-    setMessage("Added", true);
+    const data = await api("GET", `/api/fs?path=${encodeURIComponent(dirPath || "")}`);
+    picker.state = data;
+    picker.path.value = data.path;
+    pickerCrumbs(data.path);
+    document.getElementById("pkUp").disabled = !data.parent;
+    const rows = data.directories.map((dir) => {
+      const tags = [];
+      if (dir.initialized) tags.push(el("span", { className: "pk-tag bl", textContent: "backlog" }));
+      else if (dir.isGit) tags.push(el("span", { className: "pk-tag git", textContent: "git" }));
+      if (dir.added) tags.push(el("span", { className: "pk-tag added", textContent: "added" }));
+      const row = el("button", { type: "button", className: `pk-row${dir.added ? " disabled" : ""}`, role: "option", title: dir.path }, [
+        el("span", { textContent: "📁" }),
+        el("span", { className: "pk-name", textContent: dir.name }),
+        ...tags,
+      ]);
+      row.dataset.path = dir.path;
+      row.onclick = () => pickerSelect(dir);
+      row.ondblclick = () => pickerLoad(dir.path);
+      row.onkeydown = (event) => { if (event.key === "ArrowRight") pickerLoad(dir.path); };
+      return row;
+    });
+    picker.list.replaceChildren(...(rows.length ? rows : [el("div", { className: "pk-empty", textContent: "No sub-folders here. You can still add this folder." })]));
+    // Default selection = the folder being viewed, so "Add this folder" works without extra clicks.
+    pickerSelect({ path: data.path, added: data.added });
+    picker.list.scrollTop = 0;
+  } catch (error) {
+    pickerError(error.message);
+  }
+}
+
+function pickerOpen() {
+  pickerError("");
+  picker.name.value = "";
+  if (typeof picker.dlg.showModal === "function") picker.dlg.showModal();
+  else picker.dlg.setAttribute("open", "");
+  pickerLoad(picker.state ? picker.state.path : "");
+}
+
+function pickerClose() {
+  if (picker.dlg.open) picker.dlg.close();
+}
+
+document.getElementById("addOpen").onclick = pickerOpen;
+document.getElementById("pkClose").onclick = pickerClose;
+document.getElementById("pkCancel").onclick = pickerClose;
+document.getElementById("pkUp").onclick = () => { if (picker.state && picker.state.parent) pickerLoad(picker.state.parent); };
+document.getElementById("pkHome").onclick = () => pickerLoad(picker.state ? picker.state.home : "");
+picker.path.onkeydown = (event) => { if (event.key === "Enter") { event.preventDefault(); pickerLoad(picker.path.value); } };
+picker.dlg.addEventListener("click", (event) => { if (event.target === picker.dlg) pickerClose(); });
+
+document.getElementById("pkForm").onsubmit = async (event) => {
+  event.preventDefault();
+  if (picker.busy || !picker.chosen) return;
+  picker.busy = true;
+  picker.add.disabled = true;
+  pickerError("");
+  try {
+    const result = await api("POST", "/api/projects", { path: picker.chosen, name: picker.name.value });
+    pickerClose();
+    setMessage(`Added ${result.project.name}`, true);
     await refresh();
   } catch (error) {
-    setMessage(error.message);
+    pickerError(error.message);
+    picker.add.disabled = false;
+  } finally {
+    picker.busy = false;
   }
 };
 

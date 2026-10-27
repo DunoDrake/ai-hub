@@ -17,7 +17,7 @@ Always-on service on macOS: see `docs/operations.md`.
 
 ## Use
 
-1. Open `http://127.0.0.1:4880/`, paste the absolute path of a repo, press **Add project**. Nothing is discovered or added automatically.
+1. Open `http://127.0.0.1:4880/` and press **Add project**. A popup lists your folders: click to select, double-click (or `→`) to open one, or type/paste a path and press Enter. Press **Add this folder**. Folders already added are marked and cannot be added twice. Nothing is discovered or added automatically.
 2. Not initialized yet: enter a letters-only task prefix and press **Init Backlog**. This runs `backlog init --defaults`, creates `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`, and appends the shared task and model-routing protocol from `templates/agent-protocol.md`.
 3. Each initialized card has a **Sprints** section: type a name (and optional due date), press **Add sprint**. A sprint is a Backlog.md milestone, so it shows on that project's own dashboard. Open tasks without a sprint are listed under **Not in a sprint** with a dropdown to assign each one; the same can be done with `backlog task edit <id> -m "<sprint>"`.
    If the card shows "Agent protocol ... out of date", press **Update** to rewrite the AI Hub block in `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` (needed once per existing project after upgrading AI Hub).

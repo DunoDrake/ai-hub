@@ -6,6 +6,7 @@ Local only. Requests need `Host: 127.0.0.1:<port>` or `localhost:<port>`. Non-GE
 |---|---|---|---|
 | GET | `/api/projects` | | `{ projects: [{ id, name, path, port, exists, initialized, isGit, running, url, summary, currentPhase, phaseProgress, gateStatus, protocolStale }] }` |
 | POST | `/api/projects` | `{ path, name? }` | `{ project }`. 400 non-absolute or missing path, 409 duplicate |
+| GET | `/api/fs` | `?path=<abs dir>` (default: home) | Read-only folder browser for the Add project popup: `{ path, parent, home, isGit, initialized, added, directories: [{ name, path, isGit, initialized, added }] }`. Sub-directories only, hidden ones skipped, never file contents. 400 relative or missing path, 403 unreadable directory |
 | DELETE | `/api/projects/:id` | | Stops dashboard, removes registry entry only |
 | POST | `/api/projects/:id/init` | `{ prefix }` | Runs `backlog init`, applies agent protocol. 400 bad prefix, 409 already initialized |
 | POST | `/api/projects/:id/start` | | Starts dashboard. 409 if not initialized |
