@@ -1,10 +1,16 @@
-# Project Roadmap: Phase-Driven Development
+# Delivery roadmap: phase-driven development
 
 A structured four-phase roadmap template for managing projects through AI Hub and Backlog.md.
 
 ## Overview
 
 This roadmap divides project execution into four distinct phases, each with grouped tickets and a manual review gate. The workflow ensures quality control at phase boundaries while enabling parallel development within each phase.
+
+## Roadmap terminology
+
+This is a **phase-driven delivery roadmap**: it communicates delivery stages, phase completion, review gates, and the work recently delivered. It is not a replacement for a product strategy or a detailed feature backlog. Feature tickets remain the execution units; milestones group them; phases add a higher-level delivery sequence.
+
+Use milestone names in the form `Phase N - <name>` when a milestone should appear in AI Hub's Delivery roadmap. Use any other milestone name for a normal feature sprint, experiment, maintenance bucket, or unplanned work that should remain on the board without becoming a roadmap phase. On each project card, delivered work includes Done and Closed with resolution:done. Wontfix and unclassified legacy Closed are excluded. Recent items are sorted by update time. Resolved scope is tracked separately from delivered work.
 
 **Visual diagram:** [`roadmap-diagram.html`](../roadmap-diagram.html) (open in browser)
 
@@ -130,8 +136,8 @@ backlog milestone add "Phase 3: Release"
 ### 3. Create Tickets per Phase
 For Phase 0, create tickets:
 ```bash
-backlog task create "P0-1 Repository setup" -m "Phase 0: Foundation" --ac "CI/CD pipeline runs" --ac "Lint passes"
-backlog task create "P0-2 Architecture design" -m "Phase 0: Foundation"
+backlog task create "P0-1 Repository setup" -l dev-medium -m "Phase 0: Foundation" --ac "CI/CD pipeline runs" --ac "Lint passes"
+backlog task create "P0-2 Architecture design" -l dev-high -m "Phase 0: Foundation" --ac "Architecture reviewed"
 # ... more Phase 0 tickets
 ```
 
@@ -146,7 +152,7 @@ backlog task list --status "Done" -m "Phase 0: Foundation"
 ```
 
 ### 5. Phase Gate: Manual Review
-When all Phase 0 tickets are in "Done":
+When Phase 0 is nonempty and all tickets are resolved (Done, Wontfix or Closed with recorded resolution):
 
 1. **Pull together deliverables:**
    - Architecture document
@@ -176,7 +182,7 @@ Once approved:
 # Mark Phase 0 milestone as complete (optional, for clarity)
 # Then begin Phase 1
 
-backlog task create "P1-1 Feature One" -m "Phase 1: Features" --ac "Accepts input" --ac "Returns result"
+backlog task create "P1-1 Feature One" -l dev-medium -m "Phase 1: Features" --ac "Accepts input" --ac "Returns result"
 # ... continue with Phase 1 tickets
 ```
 
@@ -201,7 +207,7 @@ Agents resume work from phase context. Example flow:
 1. Check `backlog task list --status "In Progress"`
 2. Read ticket acceptance criteria
 3. Update with `backlog task edit <id> --append-notes "<progress>"`
-4. When done, move ticket to "Done" with `--final-summary`
+4. Hand off to Review, then obtain actual approval before Done; close only after resolution. Follow [workflow.md](workflow.md).
 
 ---
 
@@ -213,8 +219,8 @@ Agents resume work from phase context. Example flow:
 | `backlog/config.yml` | Statuses, categories, archiving rules |
 | `AGENTS.md` | AI agent instructions (protocol block injected by AI Hub init) |
 | `CLAUDE.md` / `GEMINI.md` | Provider-specific instructions |
-| `templates/phase-completion-checklist.md` | Gate-review checklist copied to `backlog/` per phase |
-| `templates/phase-retrospective.md` | Retrospective template copied to `backlog/` per phase |
+| `templates/phase-completion-checklist.md` | Gate-review checklist kept in project docs or imported via Backlog document CLI |
+| `templates/phase-retrospective.md` | Retrospective kept in project docs or imported via Backlog document CLI |
 
 All are versioned with your repo. Milestones track phase progress in Backlog.md's own dashboard; AI Hub's board also displays phase and roadmap metadata from the task milestone field.
 

@@ -1,11 +1,11 @@
 # Phase Retrospective: {{PHASE_NAME}}
 
 Run this after the [phase completion checklist](./phase-completion-checklist.md) is approved, and
-before the next phase's tickets are created. Copy it into `backlog/` so it's versioned with the
-project history:
+before the next phase's tickets are created. Keep it in project docs, or create/edit a
+Backlog document through CLI (never write its Markdown directly):
 
 ```bash
-cp templates/phase-retrospective.md "backlog/phase-${PHASE_NUMBER}-retrospective.md"
+backlog doc create "Phase retrospective" --type other
 ```
 
 **Phase:** {{PHASE_NAME}}
@@ -48,7 +48,7 @@ and ideally owned by someone.
 Pull these numbers from Backlog.md rather than estimating from memory:
 
 ```bash
-backlog task list -m "{{PHASE_NAME}}" --status "Done" --plain   # count + list of completed tickets
+backlog-phase status "{{PHASE_NAME}}" --json   # delivered versus resolved/Wontfix
 ```
 
 | Metric | Planned | Actual |
@@ -77,4 +77,4 @@ ticket, not just a note. List them and their ticket IDs once created:
 ---
 
 **Next phase kickoff:** once this retrospective is filed, create next phase's tickets per
-your project's `docs/roadmap-guide.md` and start work.
+your project's delivery roadmap guide and start work.

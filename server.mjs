@@ -9,6 +9,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFile, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { delivered, declined, resolved, workflowEnabled, workflowRecord, migrateWorkflow, moveWorkflow, effectiveReadiness } from "./lib/workflow.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4880);
@@ -160,7 +161,8 @@ async function stopDashboard(project) {
 }
 
 const UNPLANNED_LIMIT = 50;
-const FINISHED_STATUS = /^(done|closed)$/i;
+const COMPLETED_WORK_LIMIT = 5;
+const FINISHED_STATUS = /^(done|wontfix|closed)$/i;
 const CONFIG_CANDIDATES = ["backlog/config.yml", ".backlog/config.yml", "backlog.config.yml"];
 const STATUSES_LINE = /^statuses:[ \t]*(\[.*\])/m;
 
@@ -168,6 +170,7 @@ function summarizeTasks(tasks) {
 	const counts = {};
 	const inProgress = [];
 	const unplanned = [];
+	const completed = [];
 	let unplannedTotal = 0;
 	for (const task of tasks) {
 		counts[task.status] = (counts[task.status] || 0) + 1;
@@ -178,8 +181,30 @@ function summarizeTasks(tasks) {
 			unplannedTotal += 1;
 			if (unplanned.length < UNPLANNED_LIMIT) unplanned.push({ id: task.id, title: task.title });
 		}
+		// Closed retains its resolution; cancellation never becomes an accomplishment.
+		if (delivered(task)) {
+			completed.push({
+				id: task.id,
+				title: task.title,
+				milestone: task.milestone || null,
+				type: task.type || null,
+				updatedAt: task.updatedAt || task.createdAt || null,
+			});
+		}
 	}
-	return { counts, total: tasks.length, inProgress, unplanned, unplannedTotal };
+	completed.sort((a, b) => {
+		const aTime = a.updatedAt ? Date.parse(a.updatedAt) : 0;
+		const bTime = b.updatedAt ? Date.parse(b.updatedAt) : 0;
+		return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
+	});
+	return {
+		counts,
+		total: tasks.length,
+		inProgress,
+		unplanned,
+		unplannedTotal,
+		completedWork: { total: completed.length, recent: completed.slice(0, COMPLETED_WORK_LIMIT) },
+	};
 }
 
 // Backlog.md has no JSON output for milestones; parse the plain text and fail loudly if it does not
@@ -211,12 +236,15 @@ async function listSprints(project) {
 	return parseSprints(await runBacklog(project.path, ["milestone", "list", "--show-completed", "--plain"], SUMMARY_TIMEOUT_MS));
 }
 
-// Backlog.md counts only "Done" as finished; AI Hub counts Done and Closed, so recompute from the task list.
+// Delivered work and resolved scope are separate: Wontfix ends work without delivering it.
 function applyTaskCounts(sprints, tasks) {
 	return sprints.map((sprint) => {
 		const own = tasks.filter((task) => task.milestone === sprint.id);
-		const done = own.filter((task) => FINISHED_STATUS.test(task.status)).length;
-		return { ...sprint, done, total: own.length, completed: own.length > 0 && done === own.length };
+		const done = own.filter(delivered).length;
+		const resolvedCount = own.filter(resolved).length;
+		const wontfix = own.filter(declined).length;
+		const unknownClosed = own.filter((task) => /^closed$/i.test(task.status) && !delivered(task) && !declined(task)).length;
+		return { ...sprint, done, resolved: resolvedCount, wontfix, unknownClosed, total: own.length, completed: own.length > 0 && resolvedCount === own.length };
 	});
 }
 
@@ -263,7 +291,7 @@ function computePhaseInfo(dir, sprints, tasks) {
 	const started = sprint.done > 0 || sprint.id === currentId;
 	let gateStatus = sprint.completed ? "completed" : started ? "in-progress" : "not-started";
 	const gate = latestGateDecision(dir, sprint.id);
-	if (gate && gate.decision === "approved") gateStatus = "approved";
+	if (gate && gate.decision === "approved" && sprint.completed) gateStatus = "approved";
 	else if (gate && gate.decision === "rework") gateStatus = "in-progress";
 	return { currentPhase: sprint.title, phaseProgress: { total: sprint.total, done: sprint.done, percent }, gateStatus };
 }
@@ -276,6 +304,7 @@ async function loadSummary(project) {
 	try {
 		const output = await runBacklog(project.path, ["task", "list", "--json"], SUMMARY_TIMEOUT_MS);
 		tasks = JSON.parse(output).tasks || [];
+		await enrichTasks(project, tasks);
 		value = summarizeTasks(tasks);
 	} catch (error) {
 		value = { error: error.message };
@@ -444,6 +473,7 @@ async function initProject(id, body) {
 	if (!info.exists) throw new HttpError(400, "directory no longer exists");
 	if (info.initialized) throw new HttpError(409, "Project already initialized");
 	await runBacklog(project.path, buildInitArgs(project, prefix, info.isGit), 30000);
+	await migrateWorkflow(project.path, false);
 	applyProtocol(project.path);
 	summaryCache.delete(id);
 }
@@ -535,9 +565,7 @@ function computeHealth(tasks, now = Date.now()) {
 	const rate = (num, den) => (den > 0 ? Math.round((num / den) * 1000) / 10 : null);
 	const tierCount = (task) => (task.labels || []).filter((label) => MODEL_TIER_SET.has(label)).length;
 	const open = tasks.filter((task) => !FINISHED_STATUS.test(task.status));
-	// Closed means abandoned/cancelled in the shared protocol, so Done-compliance counters deliberately
-	// measure status Done only; open/finished classification still treats both Done and Closed as final.
-	const done = tasks.filter((task) => /^done$/i.test(task.status));
+	const done = tasks.filter(delivered);
 	const inProgress = tasks.filter((task) => /^in progress$/i.test(task.status));
 	const ids = (list) => list.map((task) => task.id);
 	const noTier = open.filter((task) => tierCount(task) === 0);
@@ -553,6 +581,10 @@ function computeHealth(tasks, now = Date.now()) {
 		open: open.length,
 		doneTotal: done.length,
 		inProgress: inProgress.length,
+		review: tasks.filter((task) => /^review$/i.test(task.status)).length,
+		wontfix: tasks.filter(declined).length,
+		closed: tasks.filter((task) => /^closed$/i.test(task.status)).length,
+		workflowIssues: tasks.filter((task) => task.workflowError).map((task) => ({ id: task.id, error: task.workflowError })),
 		oneTier: open.length - noTier.length - multiTier.length,
 		noTier: noTier.length,
 		multiTier: multiTier.length,
@@ -582,32 +614,35 @@ function computeHealth(tasks, now = Date.now()) {
 async function loadHealth(id) {
 	const project = requireInitialized(id);
 	const output = await runBacklog(project.path, ["task", "list", "--json"], SUMMARY_TIMEOUT_MS);
-	return computeHealth(JSON.parse(output).tasks || []);
+	const tasks = JSON.parse(output).tasks || [];
+	await enrichTasks(project, tasks);
+	return computeHealth(tasks);
 }
 
-async function enrichBlocking(project, tasks) {
-	const blocked = tasks.filter((task) => !FINISHED_STATUS.test(task.status) && task.isReady === false);
-	const queue = [...blocked];
-	const results = new Map();
+async function enrichTasks(project, tasks) {
+	const byId = new Map(tasks.map((task) => [task.id, task]));
+	const queue = tasks.filter((task) => task.isReady === false || /^(review|wontfix|closed)$/i.test(task.status) || (task.labels || []).some((label) => /^(review:|resolution:)/.test(label)));
 	const worker = async () => {
 		while (queue.length) {
 			const task = queue.shift();
-			const key = `${project.path}\0${task.id}\0${task.updatedAt || task.createdAt || ""}`;
-			if (taskDetailCache.has(key)) { results.set(task.id, taskDetailCache.get(key)); continue; }
 			try {
-				const detail = JSON.parse(await runBacklog(project.path, ["task", "view", task.id, "--json"], SUMMARY_TIMEOUT_MS)).task;
-				const value = { blockedBy: (detail.readiness && detail.readiness.blockingDependencies) || [], blockedError: null };
-				const prefix = `${project.path}\0${task.id}\0`;
-				for (const cachedKey of taskDetailCache.keys()) if (cachedKey.startsWith(prefix) && cachedKey !== key) taskDetailCache.delete(cachedKey);
-				taskDetailCache.set(key, value);
-				results.set(task.id, value);
+				const key = `${project.path}\0${task.id}`;
+				const cached = taskDetailCache.get(key);
+				const detail = cached && Date.now() - cached.at < SUMMARY_TTL_MS ? cached.detail : JSON.parse(await runBacklog(project.path, ["task", "view", task.id, "--json"], SUMMARY_TIMEOUT_MS)).task;
+				if (!cached || detail !== cached.detail) taskDetailCache.set(key, { at: Date.now(), detail });
+				task.workflow = workflowRecord(detail);
+				if (/^(review|wontfix)$/i.test(task.status) && (!task.workflow || task.workflow.to.toLowerCase() !== task.status.toLowerCase())) task.workflowError = 'Missing workflow evidence; reopen and record this transition through AI Hub.';
+				if (/^closed$/i.test(task.status) && !delivered(task) && !declined(task)) task.workflowError = 'Legacy closure: resolution unknown; excluded from delivered work.';
+				if (task.isReady === false && !resolved(task)) {
+					Object.assign(task, await effectiveReadiness(detail, async (id) => byId.get(id) || JSON.parse(await runBacklog(project.path, ["task", "view", id, "--json"], SUMMARY_TIMEOUT_MS)).task));
+				}
 			} catch (error) {
-				results.set(task.id, { blockedBy: [], blockedError: error.message });
+				task.workflowError = error.message;
+				if (task.isReady === false) task.blockedError = error.message;
 			}
 		}
 	};
-	await Promise.all(Array.from({ length: Math.min(6, queue.length) }, worker));
-	return results;
+	await Promise.all(Array.from({ length: Math.min(4, queue.length) }, worker));
 }
 
 async function loadBoard(id) {
@@ -617,7 +652,7 @@ async function loadBoard(id) {
 		runBacklog(project.path, ["task", "list", "--json"], SUMMARY_TIMEOUT_MS),
 	]);
 	const tasks = JSON.parse(output).tasks || [];
-	const blocking = await enrichBlocking(project, tasks);
+	await enrichTasks(project, tasks);
 	let sprints = [];
 	let sprintsError = null;
 	try {
@@ -630,6 +665,7 @@ async function loadBoard(id) {
 		statuses,
 		modelTiers: MODEL_TIERS,
 		closedEnabled: statuses.some((status) => status.toLowerCase() === "closed"),
+		workflowEnabled: workflowEnabled(statuses),
 		tasks: tasks.map((task) => ({
 			id: task.id,
 			title: task.title,
@@ -644,8 +680,12 @@ async function loadBoard(id) {
 			updatedAt: task.updatedAt || task.createdAt || null,
 			isReady: task.isReady !== false,
 			stale: isStale(task),
-			blockedBy: blocking.has(task.id) ? blocking.get(task.id).blockedBy : [],
-			blockedError: blocking.has(task.id) ? blocking.get(task.id).blockedError : null,
+			blockedBy: task.blockedBy || [],
+			blockedError: task.blockedError || null,
+			workflow: task.workflow || null,
+			workflowError: task.workflowError || null,
+			delivered: delivered(task),
+			resolution: delivered(task) ? "done" : declined(task) ? "wontfix" : null,
 		})),
 		sprints,
 		sprintsError,
@@ -698,6 +738,9 @@ async function computePhaseMetrics(project) {
 				milestoneId: sprint.id,
 				phase: sprint.title,
 				done: sprint.done,
+				resolved: sprint.resolved,
+				wontfix: sprint.wontfix,
+				unknownClosed: sprint.unknownClosed,
 				total: sprint.total,
 				percent: sprint.total > 0 ? Math.round((sprint.done / sprint.total) * 1000) / 10 : null,
 				completed: sprint.completed,
@@ -730,9 +773,9 @@ function csvField(value) {
 }
 
 function metricsToCsv(metrics) {
-	const header = ["milestoneId", "phase", "done", "total", "percent", "completed", "dueDate", "startedAt", "estimatedDays", "actualDays", "ongoing", "gateDecision", "gateDate", "gateReviewer"];
+	const header = ["milestoneId", "phase", "done", "resolved", "wontfix", "unknownClosed", "total", "percent", "completed", "dueDate", "startedAt", "estimatedDays", "actualDays", "ongoing", "gateDecision", "gateDate", "gateReviewer"];
 	const rows = metrics.phases.map((phase) => [
-		phase.milestoneId, phase.phase, phase.done, phase.total, phase.percent, phase.completed, phase.dueDate,
+		phase.milestoneId, phase.phase, phase.done, phase.resolved, phase.wontfix, phase.unknownClosed, phase.total, phase.percent, phase.completed, phase.dueDate,
 		phase.duration ? phase.duration.startedAt : "", phase.duration ? phase.duration.estimatedDays : "", phase.duration ? phase.duration.actualDays : "", phase.duration ? phase.duration.ongoing : "",
 		phase.gate ? phase.gate.decision : "", phase.gate ? phase.gate.date : "", phase.gate ? phase.gate.reviewer : "",
 	].map(csvField).join(","));
@@ -746,16 +789,23 @@ async function loadMetricsCsv(id) {
 async function moveTask(id, body) {
 	const taskId = typeof body.taskId === "string" ? body.taskId.trim() : "";
 	if (!/^[A-Za-z]+-\d+(\.\d+)*$/.test(taskId)) throw new HttpError(400, "taskId is invalid");
-	const wanted = typeof body.status === "string" ? body.status.trim().toLowerCase() : "";
 	const project = requireInitialized(id);
-	const target = (await readStatuses(project)).find((status) => status.toLowerCase() === wanted);
-	if (!target) throw new HttpError(400, "Unknown status");
 	try {
-		await runBacklog(project.path, ["task", "edit", taskId, "-s", target], 15000);
+		await moveWorkflow(project.path, taskId, body, runBacklog);
 	} catch (error) {
 		throw new HttpError(400, error.message);
 	}
 	summaryCache.delete(id);
+	taskDetailCache.clear();
+}
+
+async function enableWorkflow(id, body) {
+	const project = requireInitialized(id);
+	try {
+		const result = await migrateWorkflow(project.path, body.dryRun === true);
+		if (!body.dryRun) { applyProtocol(project.path); summaryCache.delete(id); }
+		return result;
+	} catch (error) { throw new HttpError(400, error.message); }
 }
 
 // `backlog config set statuses` is refused by the CLI, which says to edit the config file directly.
@@ -828,7 +878,7 @@ async function route(method, pathname, body, query = new URLSearchParams()) {
 	}
 	if (method === "GET" && pathname === "/api/fs") return listDirectories(query.get("path"));
 	if (method === "POST" && pathname === "/api/projects") return { project: await addProject(body) };
-	const match = /^\/api\/projects\/([a-f0-9]{8})(?:\/(start|stop|init|sprints|assign|protocol|board|move|closed|tasks|tier|metrics|health))?$/.exec(pathname);
+	const match = /^\/api\/projects\/([a-f0-9]{8})(?:\/(start|stop|init|sprints|assign|protocol|board|move|closed|workflow|tasks|tier|metrics|health))?$/.exec(pathname);
 	if (!match) throw new HttpError(404, "Not found");
 	const [, id, action] = match;
 	if (method === "GET" && action === "board") return loadBoard(id);
@@ -849,6 +899,7 @@ async function route(method, pathname, body, query = new URLSearchParams()) {
 	if (action === "protocol") refreshProtocol(id);
 	if (action === "move") await moveTask(id, body);
 	if (action === "closed") enableClosed(id);
+	if (action === "workflow") return enableWorkflow(id, body);
 	if (action === "tasks") await createTask(id, body);
 	if (action === "tier") await setTaskTier(id, body);
 	return { ok: true, url: `http://127.0.0.1:${project.port}/` };

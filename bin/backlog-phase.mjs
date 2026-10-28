@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// backlog-phase: automation for the phase-driven roadmap described in docs/roadmap-guide.md.
+// backlog-phase: automation for the phase-driven roadmap described in guides/roadmap-guide.md.
 // Phases are Backlog.md milestones named "Phase N: <name>"; this reads/writes them through the
 // `backlog` CLI only, so it works standalone in any Backlog.md repo and needs no AI Hub server.
 //
@@ -21,21 +21,21 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import crypto from "node:crypto";
 import { execFile } from "node:child_process";
+import { delivered, declined, resolved, workflowRecord, migrateWorkflow, moveWorkflow, effectiveReadiness, withTaskLock } from "../lib/workflow.mjs";
 
 const BACKLOG_BIN = process.env.BACKLOG_BIN || "backlog";
 const DATA_DIR = process.env.AI_HUB_DATA_DIR || path.join(os.homedir(), ".config", "ai-hub");
 const REGISTRY_FILE = path.join(DATA_DIR, "projects.json");
 const RUN_TIMEOUT_MS = 15000;
 const LIST_TIMEOUT_MS = 8000;
-const FINISHED_STATUS = /^(done|closed)$/i;
+const FINISHED_STATUS = /^(done|wontfix|closed)$/i;
 const CONFIG_CANDIDATES = ["backlog/config.yml", ".backlog/config.yml", "backlog.config.yml"];
 const GATE_LOG_REL = path.join("backlog", "phase-gates.json");
 const PHASE_NUMBER = /^Phase\s+(\d+)\s*:?/i;
 
 // Built-in four-phase template, matching templates/init-roadmap.sh milestone names and the
-// typical tickets documented in docs/roadmap-guide.md. `advance` falls back to this when no
+// typical tickets documented in guides/roadmap-guide.md. `advance` falls back to this when no
 // `--template` file is given and the current phase name matches "Phase N: ...".
 const BUILTIN_PHASES = [
 	{
@@ -189,9 +189,9 @@ async function loadTaskDetail(cwd, taskId) {
 function summarize(tasks) {
 	const byStatus = {};
 	for (const task of tasks) byStatus[task.status] = (byStatus[task.status] || 0) + 1;
-	const done = tasks.filter((t) => FINISHED_STATUS.test(t.status)).length;
+	const done = tasks.filter(delivered).length;
 	const total = tasks.length;
-	return { total, done, percent: total ? Math.round((done / total) * 1000) / 10 : 0, byStatus };
+	return { total, done, resolved: tasks.filter(resolved).length, wontfix: tasks.filter(declined).length, percent: total ? Math.round((done / total) * 1000) / 10 : 0, byStatus };
 }
 
 function isLocalDoc(ref) {
@@ -216,25 +216,32 @@ async function collectDocIssues(cwd, tasks) {
 
 async function collectAcceptanceIssues(cwd, tasks) {
 	const incomplete = [];
-	for (const task of tasks) {
+	for (const task of tasks.filter(delivered)) {
 		const detail = await loadTaskDetail(cwd, task.id);
 		const criteria = detail.acceptanceCriteria || [];
 		const unchecked = criteria.filter((c) => !c.checked);
+		if (!criteria.length) unchecked.push({ text: "No acceptance criteria defined" });
 		if (unchecked.length) incomplete.push({ taskId: task.id, unchecked: unchecked.map((c) => c.text) });
 	}
 	return incomplete;
 }
 
 function needsReviewTasks(tasks) {
-	return tasks.filter((t) => (t.labels || []).includes("needs-review")).map((t) => t.id);
+	return tasks.filter((t) => /^review$/i.test(t.status) || (t.labels || []).includes("needs-review")).map((t) => t.id);
 }
 
 async function runChecks(cwd, phase, tasks) {
 	const notDone = tasks.filter((t) => !FINISHED_STATUS.test(t.status)).map((t) => ({ id: t.id, title: t.title, status: t.status }));
 	const docs = await collectDocIssues(cwd, tasks);
+	const issues = [];
+	for (const task of tasks.filter((t) => /^(wontfix|closed)$/i.test(t.status))) {
+		const record = workflowRecord(await loadTaskDetail(cwd, task.id));
+		if (!record || !record.note || record.to.toLowerCase() !== task.status.toLowerCase() || !(delivered(task) || declined(task))) issues.push(task.id);
+	}
 	return {
-		allDone: { pass: notDone.length === 0, notDone },
+		allDone: { pass: tasks.length > 0 && notDone.length === 0, notDone },
 		docs: { pass: docs.missing.length === 0, referenced: docs.referenced, missing: docs.missing },
+		resolutionEvidence: { pass: issues.length === 0, missing: issues },
 	};
 }
 
@@ -286,8 +293,11 @@ function printChecklist(label, checks) {
 
 function reportIssues(checks) {
 	if (checks.allDone && !checks.allDone.pass) {
-		console.log("\nTasks not Done:");
+		console.log("\nUnresolved tasks (or an empty phase):");
 		for (const t of checks.allDone.notDone) console.log(`  ${t.id} [${t.status}] ${t.title}`);
+	}
+	if (checks.resolutionEvidence && !checks.resolutionEvidence.pass) {
+		console.log("\nMissing Wontfix/Closed resolution evidence: " + checks.resolutionEvidence.missing.join(", "));
 	}
 	if (checks.docs && !checks.docs.pass) {
 		console.log("\nMissing documentation files:");
@@ -342,7 +352,7 @@ async function cmdCheck(cwd, phaseArg, opts) {
 		return pass ? 0 : 1;
 	}
 	console.log(`${phase.title} (${phase.id}): ${pass ? "PASS" : "FAIL"}`);
-	printChecklist("Checks", { "all tasks Done": checks.allDone, "documentation files exist": checks.docs });
+	printChecklist("Checks", { "all tasks resolved": checks.allDone, "resolution evidence": checks.resolutionEvidence, "documentation files exist": checks.docs });
 	reportIssues(checks);
 	if (checks.docs.pass && checks.docs.referenced === 0) console.log("\nNote: no tasks in this phase reference documentation (--doc); nothing to verify.");
 	return pass ? 0 : 1;
@@ -359,7 +369,7 @@ async function cmdGate(cwd, phaseArg, opts) {
 		const decision = opts.approve ? "approved" : "rework";
 		if (decision === "approved" && !pass && !opts.force) {
 			if (!opts.json) {
-				printChecklist("Gate checklist", { "all tasks Done": checks.allDone, "documentation files exist": checks.docs, "code review complete": checks.codeReview, "acceptance criteria verified": checks.tests });
+				printChecklist("Gate checklist", { "all tasks resolved": checks.allDone, "resolution evidence": checks.resolutionEvidence, "documentation files exist": checks.docs, "code review complete": checks.codeReview, "acceptance criteria verified": checks.tests });
 				reportIssues(checks);
 			}
 			throw new CliError("Refusing to approve: automated checks are failing. Fix them or re-run with --force.");
@@ -385,7 +395,7 @@ async function cmdGate(cwd, phaseArg, opts) {
 		return pass ? 0 : 1;
 	}
 	console.log(`${phase.title} (${phase.id}) gate checklist: ${pass ? "READY" : "NOT READY"}`);
-	printChecklist("Checklist", { "all tasks Done": checks.allDone, "documentation files exist": checks.docs, "code review complete (no needs-review)": checks.codeReview, "acceptance criteria verified": checks.tests });
+	printChecklist("Checklist", { "all tasks resolved": checks.allDone, "resolution evidence": checks.resolutionEvidence, "documentation files exist": checks.docs, "code review complete (no needs-review)": checks.codeReview, "acceptance criteria verified": checks.tests });
 	reportIssues(checks);
 	const last = latestGateDecision(cwd, phase.id);
 	console.log(last ? `\nLast recorded decision: ${last.decision} on ${last.date}${last.reviewer ? ` by ${last.reviewer}` : ""}` : "\nNo gate decision recorded yet. Use --approve or --rework to record one.");
@@ -413,7 +423,7 @@ async function cmdAdvance(cwd, phaseArg, opts) {
 	const tasks = await loadPhaseTasks(cwd, phase.id);
 
 	if (!opts.force) {
-		const checks = await runChecks(cwd, phase, tasks);
+		const checks = await runGateChecklist(cwd, phase, tasks);
 		const gateDecision = latestGateDecision(cwd, phase.id);
 		const gateOk = gateDecision && gateDecision.decision === "approved";
 		if (!checksPass(checks) || !gateOk) {
@@ -481,6 +491,10 @@ async function cmdNext(cwd, opts) {
 	const allowed = PROVIDER_TIERS[provider];
 	if (!allowed) throw new CliError(`Unknown --provider "${opts.provider || ""}". Expected: ${Object.keys(PROVIDER_TIERS).join(", ")}`);
 	const data = await runBacklogJson(cwd, ["task", "list", "--json"], LIST_TIMEOUT_MS);
+	for (const task of (data.tasks || []).filter((t) => /^to do$/i.test(t.status) && t.isReady === false)) {
+		const detail = await loadTaskDetail(cwd, task.id);
+		Object.assign(task, await effectiveReadiness(detail, async (id) => (data.tasks || []).find((t) => t.id === id) || await loadTaskDetail(cwd, id)));
+	}
 	const tasks = (data.tasks || []).filter((task) => {
 		if (!/^to do$/i.test(task.status || "")) return false;
 		if (task.isReady === false || (task.assignees || []).length) return false;
@@ -507,52 +521,30 @@ async function cmdNext(cwd, opts) {
 	return 0;
 }
 
-const CLAIM_LOCK_MAX_MS = 60000;
-
-function claimLockPath(cwd, taskId) {
-	const project = crypto.createHash("sha256").update(fs.realpathSync(cwd)).digest("hex").slice(0, 12);
-	const safeTask = taskId.toLowerCase().replace(/[^a-z0-9.-]/g, "-");
-	return path.join(DATA_DIR, "locks", `${project}-${safeTask}.lock`);
-}
-
-function acquireClaimLock(lock) {
-	fs.mkdirSync(path.dirname(lock), { recursive: true });
-	for (let attempt = 0; attempt < 3; attempt++) {
-		try {
-			fs.mkdirSync(lock);
-			fs.writeFileSync(path.join(lock, "owner.json"), JSON.stringify({ pid: process.pid, at: new Date().toISOString() }) + "\n");
-			return;
-		} catch (error) {
-			if (error.code !== "EEXIST") throw error;
-			let age = 0;
-			try { age = Date.now() - fs.statSync(lock).mtimeMs; } catch { continue; }
-			if (age > CLAIM_LOCK_MAX_MS && attempt < 2) { fs.rmSync(lock, { recursive: true, force: true }); continue; }
-			throw new CliError("Claim already in progress for this ticket. Try again after it finishes.");
-		}
-	}
-}
-
 async function cmdClaim(cwd, taskId, opts) {
 	const provider = (opts.provider || "").toLowerCase().replace(/^@/, "");
 	const allowed = PROVIDER_TIERS[provider];
 	if (!allowed) throw new CliError(`Unknown --provider "${opts.provider || ""}". Expected: ${Object.keys(PROVIDER_TIERS).join(", ")}`);
 	if (!/^[A-Za-z]+-\d+(?:\.\d+)*$/.test(taskId || "")) throw new CliError("claim needs a task id like TASK-12");
-	const lock = claimLockPath(cwd, taskId);
-	acquireClaimLock(lock);
-	try {
+	return withTaskLock(cwd, taskId, async () => {
 		const before = await loadTaskDetail(cwd, taskId);
 		const tiers = (before.labels || []).filter((label) => ROUTING_TIERS.includes(label));
 		if (!/^to do$/i.test(before.status || "")) throw new CliError(`${taskId} is ${before.status}, not To Do.`);
-		if (before.isReady === false) throw new CliError(`${taskId} is blocked and is not ready to claim.`);
+		if (before.isReady === false) {
+			const readiness = await effectiveReadiness(before, (id) => loadTaskDetail(cwd, id));
+			if (!readiness.isReady) throw new CliError(`${taskId} is blocked and is not ready to claim.`);
+		}
 		if ((before.assignees || []).length) throw new CliError(`${taskId} is already assigned to ${(before.assignees || []).join(", ")}.`);
 		if (tiers.length !== 1) throw new CliError(`${taskId} must have exactly one routing tier; found ${tiers.length}.`);
-		if (!allowed.includes(tiers[0])) throw new CliError(`${provider} cannot claim ${tiers[0]} work.`);
+		if (!allowed.includes(tiers[0]) && !(opts.routingOverride || "").trim()) throw new CliError(`${provider} cannot claim ${tiers[0]} work without an explicit operator --routing-override reason.`);
 		if (opts.dryRun) {
 			const preview = { dryRun: true, task: taskId, provider, assignee: `@${provider}`, tier: tiers[0] };
 			if (opts.json) console.log(JSON.stringify(preview, null, 2)); else console.log(`[dry-run] would claim ${taskId} for @${provider} (${tiers[0]}).`);
 			return 0;
 		}
-		await runBacklog(cwd, ["task", "edit", taskId, "-a", `@${provider}`, "-s", "In Progress"], RUN_TIMEOUT_MS);
+		const claimArgs = ["task", "edit", taskId, "-a", `@${provider}`, "-s", "In Progress"];
+		if (opts.routingOverride) claimArgs.push("--append-notes", `Operator-authorized routing exception: @${provider} handling ${tiers[0]}. ${opts.routingOverride}`);
+		await runBacklog(cwd, claimArgs, RUN_TIMEOUT_MS);
 		const after = await loadTaskDetail(cwd, taskId);
 		if (!/^in progress$/i.test(after.status || "") || !(after.assignees || []).includes(`@${provider}`)) {
 			throw new CliError(`Claim verification failed for ${taskId}; observed ${after.status} assigned to ${(after.assignees || []).join(", ") || "nobody"}.`);
@@ -560,9 +552,7 @@ async function cmdClaim(cwd, taskId, opts) {
 		const result = { claimed: true, task: taskId, provider, assignee: `@${provider}`, tier: tiers[0] };
 		if (opts.json) console.log(JSON.stringify(result, null, 2)); else console.log(`Claimed ${taskId} for @${provider} (${tiers[0]}).`);
 		return 0;
-	} finally {
-		fs.rmSync(lock, { recursive: true, force: true });
-	}
+	});
 }
 
 
@@ -572,11 +562,13 @@ const HELP = `backlog-phase: automation for the phase-driven Backlog.md roadmap
 
 Usage:
   backlog-phase status  <PHASE> [options]     show completion % and task list for a phase
-  backlog-phase check   <PHASE> [options]     validate all tasks Done and referenced docs exist
+  backlog-phase check   <PHASE> [options]     validate tasks resolved, resolution evidence and referenced docs
   backlog-phase gate    <PHASE> [options]     gate checklist (docs, code review, tests); record a decision
   backlog-phase advance <PHASE> [options]     create the next phase's milestone + tickets from a template
   backlog-phase next --provider <name>        print the highest-priority ready ticket for an agent
   backlog-phase claim <TASK-ID> --provider <name>  atomically assign a ready ticket and start it
+  backlog-phase workflow [--dry-run]          enable six statuses; back up config; keep task states
+  backlog-phase move <TASK-ID> --status <status>  guarded transition with evidence
 
 Global options:
   --path <dir>          project directory (default: current directory)
@@ -590,6 +582,7 @@ next options:
 
 claim options:
   --provider <name>       required; same provider boundaries as next
+  --routing-override <reason>  operator-authorized exception for this claim only; recorded in notes
   --dry-run               validate claim without changing the ticket
   --json                  machine-readable claim result
 
@@ -600,6 +593,14 @@ gate options:
   --notes <text>          notes stored with the decision
   --force                 allow --approve despite failing checks
   --dry-run               preview the decision record without writing backlog/phase-gates.json
+
+move options:
+  --status <status>       target state (Review, Done, Wontfix, Closed, To Do, In Progress)
+  --mode ai|manual       review type for Review/Done
+  --reviewer <name>       reviewer identity (AI provider/session or human name)
+  --notes <text>          evidence, Wontfix reason, or reopen reason
+  --expected-status <status>  reject stale edits
+  --dry-run               validate without changing task
 
 advance options:
   --name <title>          next phase title (required if no built-in template applies)
@@ -632,6 +633,12 @@ function parseArgs(argv) {
 			case "--provider":
 				opts.provider = next();
 				break;
+			case "--routing-override":
+				opts.routingOverride = next();
+				break;
+			case "--status": opts.status = next(); break;
+			case "--mode": opts.mode = next(); break;
+			case "--expected-status": opts.expectedStatus = next(); break;
 			case "--json":
 				opts.json = true;
 				break;
@@ -690,6 +697,16 @@ async function main() {
 	}
 
 	switch (command) {
+		case "workflow": {
+			const result = await migrateWorkflow(cwd, opts.dryRun);
+			console.log(JSON.stringify(result, null, 2));
+			return 0;
+		}
+		case "move": {
+			const result = await moveWorkflow(cwd, phaseArg, { ...opts, note: opts.notes }, runBacklog);
+			console.log(JSON.stringify(result, null, 2));
+			return 0;
+		}
 		case "status":
 			return cmdStatus(cwd, phaseArg, opts);
 		case "check":

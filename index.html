@@ -130,6 +130,14 @@ dialog.picker::backdrop { background:rgba(2,6,16,.62); backdrop-filter:blur(3px)
 .phase-bar { height:4px; border-radius:999px; background:var(--pb); overflow:hidden; }
 .phase-fill { height:100%; background:var(--run); border-radius:999px; }
 button.phase-open { border-color:var(--accent); color:var(--accent); }
+.completed-work { min-width:0; display:flex; flex-direction:column; gap:4px; padding-top:2px; }
+.completed-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; color:var(--muted); font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; }
+.completed-head strong { color:var(--text); font-size:11px; }
+.completed-list { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.completed-item { display:flex; align-items:baseline; gap:6px; min-width:0; color:var(--text); font-size:11px; }
+.completed-item .completed-id { flex:0 0 auto; color:var(--ok); font-size:10px; font-weight:700; }
+.completed-item .completed-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.completed-item time { flex:0 0 auto; color:var(--muted); font-size:10px; }
 .cols { display:flex; flex-wrap:wrap; gap:0; }
 .col { display:inline-flex; align-items:baseline; gap:4px; color:var(--muted); background:transparent; border:0; border-left:1px solid var(--pb); border-radius:0; padding:2px 10px; font-size:10px; text-transform:uppercase; letter-spacing:.05em; }
 .col:first-child { border-left:0; padding-left:0; }
@@ -224,7 +232,17 @@ button.board-open { border-color:var(--run); color:var(--run); }
 .btools input, .btools select { min-width:0; background:transparent; border:0; border-left:1px solid var(--pb); border-radius:0; }
 .btools input { border-left:0; }
 .status-tabs { display:none; }
-.board { display:grid; grid-template-columns:repeat(4,minmax(220px,1fr)); gap:10px; align-items:start; padding-bottom:12px; }
+.board { display:grid; grid-template-columns:repeat(var(--column-count,6),minmax(220px,1fr)); gap:10px; align-items:start; padding-bottom:12px; overflow-x:auto; }
+.bcol.review .bhead { color:var(--run); }
+.bcol.wontfix .bhead { color:var(--warn); }
+.workflow-note { font-size:11px; color:var(--muted); white-space:pre-wrap; overflow-wrap:anywhere; max-height:140px; overflow:auto; }
+.workflow-note summary { cursor:pointer; }
+.workflow-form { padding:20px; display:flex; flex-direction:column; gap:12px; }
+.workflow-form h2 { margin:0; font-size:16px; }
+.workflow-form label { display:flex; flex-direction:column; gap:5px; font-size:12px; }
+.workflow-form textarea { width:100%; min-height:120px; padding:8px; font:inherit; color:var(--text); background:var(--panel); border:1px solid var(--pb); }
+.workflow-form .actions { display:flex; justify-content:flex-end; gap:8px; }
+#workflowSetup { margin-bottom:10px; }
 .bcol { min-width:0; background:var(--panel); border:1px solid var(--pb); border-left:2px solid var(--accent); border-radius:3px; padding:0 8px 8px; display:flex; flex-direction:column; gap:7px; min-height:170px; backdrop-filter:blur(12px); }
 .bcol.over { border-color:var(--run); border-left-color:var(--run); background:color-mix(in srgb,var(--run) 12%,var(--panel)); }
 .bcol.ghost { background:var(--panel); border-style:dashed; color:var(--muted); font-size:11px; padding-top:8px; }
@@ -285,7 +303,7 @@ button.pd-row .pd-model { color:var(--muted); font-size:9.5px; white-space:nowra
   .card-main { grid-template-columns:minmax(180px,240px) 1fr; }
   .actions { grid-column:1/-1; justify-content:flex-start; }
   .btools { grid-template-columns:1fr 1fr; }
-  .board { grid-template-columns:repeat(4,minmax(250px,1fr)); overflow-x:auto; }
+  .board { grid-template-columns:repeat(var(--column-count,6),minmax(250px,1fr)); overflow-x:auto; }
 }
 @media (max-width:640px) {
   header { padding:8px 14px; min-height:46px; }
@@ -412,13 +430,14 @@ button.pd-row .pd-model { color:var(--muted); font-size:9.5px; white-space:nowra
 
     <div class="roadmap-viz" id="roadmapViz" hidden>
       <div class="roadmap-header">
-        <h3>Project roadmap</h3>
+        <h3>Delivery roadmap</h3>
         <span class="roadmap-legend" id="roadmapMeta"></span>
       </div>
       <div class="roadmap-timeline" id="roadmapTimeline"></div>
       <div class="phase-detail" id="phaseDetail" hidden></div>
     </div>
     <div class="health-bar" id="healthBar" hidden></div>
+    <div id="workflowSetup" class="notice" hidden></div>
     <div class="btools">
       <input type="search" id="fSearch" placeholder="Search tickets" aria-label="Search id, title, label, or assignee">
       <select id="fSprint" aria-label="Filter by sprint"></select>
@@ -515,17 +534,38 @@ function phaseSection(project) {
   if (!project.currentPhase || !project.phaseProgress) return null;
   const gate = project.gateStatus;
   const head = el("div", { className: "phase-head" }, [
-    el("span", { className: "phase-name", textContent: project.currentPhase, title: project.currentPhase }),
+    el("span", { className: "phase-name", textContent: `${/^Phase\s+\d+/i.test(project.currentPhase) ? "Delivery phase" : "Sprint"} · ${project.currentPhase}`, title: project.currentPhase }),
     el("span", { className: `badge gate-${gate}`, textContent: GATE_LABELS[gate] || gate }),
   ]);
   const bar = el("div", { className: "phase-bar" }, [el("div", { className: "phase-fill", style: `width:${project.phaseProgress.percent}%` })]);
-  const label = el("div", { className: "now", textContent: `${project.phaseProgress.done}/${project.phaseProgress.total} tickets done (${project.phaseProgress.percent}%)` });
+  const label = el("div", { className: "now", textContent: `${project.phaseProgress.done}/${project.phaseProgress.total} delivered (${project.phaseProgress.percent}%)` });
   return el("div", { className: "phase" }, [head, bar, label]);
+}
+
+function completedWorkSection(project) {
+  const work = project.summary && project.summary.completedWork;
+  if (!work || !work.total) return null;
+  const recent = (work.recent || []).slice(0, 3);
+  const items = recent.map((task) => {
+    const date = task.updatedAt && /^\d{4}-\d{2}-\d{2}/.exec(task.updatedAt);
+    return el("div", { className: "completed-item", title: task.title }, [
+      el("span", { className: "completed-id", textContent: task.id }),
+      el("span", { className: "completed-title", textContent: task.title }),
+      date ? el("time", { dateTime: task.updatedAt, textContent: date[0] }) : null,
+    ].filter(Boolean));
+  });
+  return el("div", { className: "completed-work" }, [
+    el("div", { className: "completed-head" }, [
+      el("strong", { textContent: "Delivered work" }),
+      el("span", { textContent: `${work.total} delivered ticket${work.total === 1 ? "" : "s"}` }),
+    ]),
+    el("div", { className: "completed-list" }, items),
+  ]);
 }
 
 function columnChips(summary) {
   const wrap = el("div", { className: "cols" });
-  const order = ["In Progress", "To Do", "Done", "Closed"];
+  const order = ["To Do", "In Progress", "Review", "Done", "Wontfix", "Closed"];
   for (const status of order) {
     if (!Object.prototype.hasOwnProperty.call(summary.counts, status)) continue;
     const count = summary.counts[status];
@@ -626,7 +666,7 @@ function actionRow(project) {
     row.append(boardLink);
     const phaseSprint = findPhaseSprint(project);
     if (phaseSprint) {
-      const phaseLink = el("button", { className: "phase-open", textContent: "Phase", disabled, title: project.currentPhase });
+      const phaseLink = el("button", { className: "phase-open", textContent: "Open phase", disabled, title: project.currentPhase });
       phaseLink.onclick = () => { location.hash = `#board/${project.id}/${encodeURIComponent(phaseSprint.id)}`; };
       row.append(phaseLink);
     }
@@ -730,6 +770,8 @@ function card(project) {
   else if (project.summary) {
     const phase = phaseSection(project);
     if (phase) activity.append(phase);
+    const completed = completedWorkSection(project);
+    if (completed) activity.append(completed);
     activity.append(columnChips(project.summary));
     const now = inProgressList(project.summary);
     if (now) activity.append(now);
@@ -893,7 +935,7 @@ const fTier = document.getElementById("fTier");
 const fState = document.getElementById("fState");
 const phaseMetricsEl = document.getElementById("phaseMetrics");
 const board = { id: null, data: null, metrics: null, limits: {}, dragging: false, busy: false, draft: "", draftTier: "dev-high", sprintSig: "", mobileStatus: "", pendingSprint: null, pendingHealth: "", openGroups: new Set() };
-const FINISHED = /^(done|closed)$/i;
+const FINISHED = /^(done|wontfix|closed)$/i;
 const FIRST_PAGE = 40;
 const FINISHED_PAGE = 15;
 
@@ -947,19 +989,56 @@ function syncToolbar() {
   fState.value = [...fState.options].some((option) => option.value === previousState) ? previousState : "";
 }
 
+function transitionForm(task, status) {
+  return new Promise(function (resolve) {
+    var reviewing = /^(review|done)$/i.test(status);
+    var reason = /^wontfix$/i.test(status) ? 'Reason for Wontfix' : reviewing ? 'Evidence / handoff notes' : 'Reason for reopening or requesting changes';
+    var dialog = el('dialog', { className: 'picker', ariaLabel: task.id + ' → ' + status });
+    var form = el('form', { className: 'workflow-form' });
+    form.append(el('h2', { textContent: task.id + ' → ' + status }));
+    var mode = el('select', { ariaLabel: 'Review type' }, [el('option', { value: 'manual', textContent: 'Manual review' }), el('option', { value: 'ai', textContent: 'AI review' })]);
+    var reviewer = el('input', { ariaLabel: 'Reviewer', placeholder: 'Human name or AI provider / session', required: reviewing, maxLength: 160 });
+    if (task.workflow && task.workflow.mode) mode.value = task.workflow.mode;
+    if (task.workflow && task.workflow.reviewer) reviewer.value = task.workflow.reviewer;
+    if (reviewing) {
+      form.append(el('label', {}, ['Review type', mode]), el('label', {}, ['Reviewer', reviewer]));
+      form.append(el('p', { className: 'sub', textContent: /^done$/i.test(status) ? 'Record an actual approval. All acceptance criteria must be checked first.' : 'Choose who will review and describe the work and verification to inspect.' }));
+    }
+    var note = el('textarea', { ariaLabel: reason, required: true, maxLength: 4000 });
+    form.append(el('label', {}, [reason, note]));
+    var cancel = el('button', { type: 'button', textContent: 'Cancel' });
+    var save = el('button', { type: 'submit', className: 'primary', textContent: /^done$/i.test(status) ? 'Approve review' : 'Save transition' });
+    form.append(el('div', { className: 'actions' }, [cancel, save]));
+    var result = null;
+    cancel.onclick = function () { dialog.close(); };
+    form.onsubmit = function (event) {
+      event.preventDefault();
+      if (!note.value.trim() || (reviewing && !reviewer.value.trim())) return;
+      result = { mode: reviewing ? mode.value : null, reviewer: reviewing ? reviewer.value.trim() : null, note: note.value.trim() };
+      dialog.close();
+    };
+    dialog.onclose = function () { dialog.remove(); resolve(result); };
+    dialog.append(form); document.body.append(dialog); dialog.showModal();
+  });
+}
+
 async function moveTicket(taskId, status) {
+  if (board.busy) return;
   const task = board.data.tasks.find((entry) => entry.id === taskId);
   if (!task || task.status.toLowerCase() === status.toLowerCase()) return;
   const previous = task.status;
-  task.status = status;
+  const projectId = board.id;
   board.busy = true;
-  setMessage("");
-  renderBoard();
   try {
-    await api("POST", `/api/projects/${board.id}/move`, { taskId, status });
+    var details = {};
+    if (board.data.workflowEnabled && (/^(review|done|wontfix)$/i.test(status) || (/^(review|done|wontfix|closed)$/i.test(previous) && !/^closed$/i.test(status)))) {
+      details = await transitionForm(task, status);
+      if (!details || board.id !== projectId) return;
+    }
+    setMessage("");
+    await api("POST", `/api/projects/${projectId}/move`, { taskId, status, expectedStatus: previous, ...details });
     setMessage(`${taskId} moved to ${status}`, true);
   } catch (error) {
-    task.status = previous;
     setMessage(error.message);
   } finally {
     board.busy = false;
@@ -1038,9 +1117,24 @@ function ticket(task, statuses, sprintTitles) {
   if (ordinaryLabels.length > 2) meta.append(el("span", { textContent: `+${ordinaryLabels.length - 2}` }));
   if (task.assignees.length) meta.append(el("span", { textContent: task.assignees[0], title: task.assignees.join(", ") }));
   if (meta.childNodes.length) node.append(meta);
+  if (task.workflow) {
+    var record = task.workflow;
+    var heading = record.resolution === 'wontfix' ? 'Wontfix reason' : record.mode ? (record.mode === 'ai' ? 'AI review' : 'Manual review') + (record.reviewer ? ' · ' + record.reviewer : '') : 'Workflow note';
+    var evidence = el('details', { className: 'workflow-note' }, [el('summary', { textContent: heading }), el('div', { textContent: record.note || '' })]);
+    node.append(evidence);
+  }
+  if (task.workflowError) node.append(el('div', { className: 'workflow-note', textContent: task.workflowError }));
   const move = el("select", { ariaLabel: `Move ${task.id}` });
   move.append(el("option", { value: "", textContent: "Move" }));
-  for (const status of statuses) if (status.toLowerCase() !== task.status.toLowerCase()) move.append(el("option", { value: status, textContent: status }));
+  for (const status of statuses) {
+    if (status.toLowerCase() === task.status.toLowerCase()) continue;
+    if (board.data.workflowEnabled) {
+      if (/^done$/i.test(status) && !/^review$/i.test(task.status)) continue;
+      if (/^closed$/i.test(status) && !/^(done|wontfix)$/i.test(task.status)) continue;
+      if (FINISHED.test(task.status) && !/^(to do|in progress|closed)$/i.test(status)) continue;
+    }
+    move.append(el('option', { value: status, textContent: status }));
+  }
   move.onchange = () => { if (move.value) moveTicket(task.id, move.value); };
   const tier = el("select", { ariaLabel: `Route ${task.id}` });
   tier.append(el("option", { value: "", textContent: "Route" }));
@@ -1085,7 +1179,7 @@ function boardColumn(status, tasks, index, data, sprintTitles) {
   const finished = FINISHED.test(status);
   const closed = /^closed$/i.test(status);
   const active = status.toLowerCase() === board.mobileStatus.toLowerCase();
-  const col = el("section", { className: `bcol ${finished ? "fin" : ""} ${closed ? "closed" : ""} ${active ? "active" : ""}` });
+  const col = el("section", { className: `bcol ${finished ? "fin" : ""} ${closed ? "closed" : ""} ${/^review$/i.test(status) ? "review" : ""} ${/^wontfix$/i.test(status) ? "wontfix" : ""} ${active ? "active" : ""}` });
   col.append(el("div", { className: "bhead" }, [el("span", { textContent: status }), el("span", { className: "n", textContent: String(tasks.length) })]));
   if (index === 0) col.append(quickAdd());
   col.ondragover = (event) => { if (!board.dragging) return; event.preventDefault(); col.classList.add("over"); };
@@ -1106,25 +1200,6 @@ function boardColumn(status, tasks, index, data, sprintTitles) {
   return col;
 }
 
-function closedPlaceholder() {
-  const enable = el("button", { type: "button", textContent: "Enable Closed column" });
-  enable.onclick = async () => {
-    if (!confirm('Add "Closed" to statuses in this repo\'s backlog/config.yml? The file is edited in the repo.')) return;
-    enable.disabled = true;
-    try {
-      await api("POST", `/api/projects/${board.id}/closed`);
-      setMessage("Closed column enabled", true);
-    } catch (error) {
-      setMessage(error.message);
-    }
-    await loadBoardData();
-  };
-  return el("div", { className: "bcol ghost" }, [
-    el("p", { textContent: "Closed is off for this project. Closed tickets count as finished in sprint progress." }),
-    enable,
-  ]);
-}
-
 function renderStatusTabs(columns, shown) {
   if (!board.mobileStatus || !columns.some((status) => status.toLowerCase() === board.mobileStatus.toLowerCase())) board.mobileStatus = columns[0] || "";
   statusTabs.replaceChildren(...columns.map((status) => {
@@ -1140,26 +1215,40 @@ function renderBoard() {
   if (!data) return;
   syncToolbar();
   renderHealthBar();
+  renderWorkflowSetup();
   document.getElementById("boardTitle").textContent = data.project.name;
   const finishedCount = data.tasks.filter((task) => FINISHED.test(task.status)).length;
-  document.getElementById("boardMeta").textContent = `${data.tasks.length} tickets, ${finishedCount} finished`;
+  document.getElementById("boardMeta").textContent = `${data.tasks.length} tickets · ${data.tasks.filter((task) => task.delivered).length} delivered · ${finishedCount} resolved`;
   const scroll = boardEl.scrollLeft;
   const shown = visibleTasks();
   const sprintTitles = new Map(data.sprints.map((sprint) => [sprint.id, sprint.title]));
   const known = new Set(data.statuses.map((status) => status.toLowerCase()));
   const extra = [...new Set(shown.map((task) => task.status))].filter((status) => !known.has(status.toLowerCase()));
   const columns = [...data.statuses, ...extra];
-  if (!data.closedEnabled) columns.push("Closed setup");
+  boardEl.style.setProperty('--column-count', String(columns.length));
   renderStatusTabs(columns, shown);
   const rendered = data.statuses.concat(extra).map((status, index) => boardColumn(status, shown.filter((task) => task.status.toLowerCase() === status.toLowerCase()), index, data, sprintTitles));
-  if (!data.closedEnabled) {
-    const ghost = closedPlaceholder();
-    if (board.mobileStatus === "Closed setup") ghost.classList.add("active");
-    rendered.push(ghost);
-  }
   boardEl.replaceChildren(...rendered);
   boardEl.scrollLeft = scroll;
   if (data.sprintsError) setMessage(data.sprintsError);
+}
+
+function renderWorkflowSetup() {
+  var box = document.getElementById('workflowSetup');
+  box.hidden = board.data.workflowEnabled;
+  box.replaceChildren();
+  if (board.data.workflowEnabled) return;
+  var button = el('button', { type: 'button', textContent: 'Enable review workflow' });
+  button.onclick = async function () {
+    if (!confirm('Enable the six-state workflow for this project? The config is backed up, custom states and existing tickets are preserved, and provider instructions are updated.')) return;
+    button.disabled = true;
+    try {
+      await api('POST', '/api/projects/' + board.id + '/workflow', {});
+      setMessage('Workflow enabled. Existing ticket states were preserved.', true);
+      await loadBoardData();
+    } catch (error) { setMessage(error.message); button.disabled = false; }
+  };
+  box.append(el('span', { textContent: 'This project uses a legacy workflow.' }), button);
 }
 
 function phaseDurationText(duration) {
@@ -1182,7 +1271,7 @@ function phaseRow(phase, activeId) {
   return el("div", { className: `phase-row${phase.milestoneId === activeId ? " active" : ""}${phaseClass(phase.phase)}` }, [
     el("div", { className: "name", textContent: phase.phase, title: phase.phase }),
     el("div", { className: "bar" }, [el("span", { style: `width:${pct}%` })]),
-    el("div", { className: "count", textContent: `${phase.done}/${phase.total}` }),
+    el("div", { className: "count", textContent: `${phase.done}/${phase.total}`, title: `${phase.done} delivered; ${phase.wontfix || 0} wontfix; ${phase.unknownClosed || 0} legacy closed` }),
     el("div", { className: "duration", textContent: phaseDurationText(phase.duration), title: "actual / estimated phase duration" }),
     gateBadge(phase.gate),
   ]);
@@ -1200,7 +1289,7 @@ function renderPhaseMetrics() {
   phaseMetricsEl.hidden = false;
   const exportBase = `/api/projects/${board.id}/metrics`;
   const head = el("div", { className: "phase-metrics-head" }, [
-    el("h3", { textContent: "Phase metrics" }),
+    el("h3", { textContent: "Delivery phase metrics" }),
     el("div", { className: "exports" }, [
       el("a", { href: exportBase, download: "phase-metrics.json", textContent: "Export JSON" }),
       el("a", { href: `${exportBase}?format=csv`, download: "phase-metrics.csv", textContent: "Export CSV" }),
@@ -1338,7 +1427,7 @@ function renderPhaseDetail(phase, state) {
   const head = el("div", { className: "pd-head" }, [
     el("strong", { textContent: phase.phase }),
     el("span", { className: "rm-state", textContent: state }),
-    el("span", { className: "pd-meta", textContent: `${phase.done}/${phase.total} done \u00b7 ${pct}% \u00b7 ${gate}` }),
+    el("span", { className: "pd-meta", textContent: `${phase.done}/${phase.total} delivered · ${phase.wontfix || 0} wontfix · ${phase.unknownClosed || 0} legacy closed · ${pct}% · ${gate}` }),
     el("button", { className: "pd-clear", type: "button", textContent: "Show all phases", onclick: clearPhaseFilter }),
   ]);
   const row = (task) => el("button", { className: "pd-row", type: "button", title: task.title, onclick: () => focusTicket(task.id) }, [
@@ -1384,7 +1473,7 @@ function renderRoadmap() {
     const decision = phase.gate && phase.gate.decision;
     let cls = "";
     let state = "upcoming";
-    if (decision === "approved") { cls = "approved"; state = "approved"; approved += 1; }
+    if (decision === "approved" && phase.completed) { cls = "approved"; state = "approved"; approved += 1; }
     else if (decision === "rework") { cls = "active"; state = "rework"; }
     else if (phase.completed) { cls = "done"; state = "ready for gate"; }
     else if (phase.milestoneId === activeId) { cls = "active"; state = "in progress"; }
@@ -1406,7 +1495,7 @@ function renderRoadmap() {
     nodes.push(node);
   });
   document.getElementById("roadmapTimeline").replaceChildren(...nodes);
-  document.getElementById("roadmapMeta").textContent = `${phases.length} phases \u00b7 ${approved} approved \u00b7 click a phase to filter`;
+  document.getElementById("roadmapMeta").textContent = `${phases.length} delivery phases \u00b7 ${approved} approved \u00b7 click a phase to filter`;
   renderPhaseDetail(selected, selectedState);
 }
 </script>

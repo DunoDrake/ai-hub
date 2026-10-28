@@ -1,6 +1,6 @@
 # AI Hub
 
-Local manager for [Backlog.md](https://github.com/MrLesk/Backlog.md) project boards. You add projects by hand; each project gets its own Kanban dashboard (To Do / In Progress / Done). AI agents read and write tasks through the `backlog` CLI inside each repo, so they can resume work and report progress.
+Local manager for [Backlog.md](https://github.com/MrLesk/Backlog.md) project boards. You add projects by hand; each project gets its own Kanban dashboard (To Do / In Progress / Review / Done / Wontfix / Closed). AI agents read and write tasks through the `backlog` CLI inside each repo, so they can resume work and report progress.
 
 ## Requirements
 
@@ -24,9 +24,9 @@ Always-on service on macOS: see `docs/operations.md`.
    If the card shows "Agent protocol ... out of date", press **Update** to rewrite the AI Hub block in `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` (needed once per existing project after upgrading AI Hub).
 4. Press **Start dashboard**, then **Open dashboard** for that project's own board.
 5. **Stop** ends only the dashboard process. **Remove** drops the project from AI Hub and stops its dashboard; repo files are kept.
-6. **Open board** opens AI Hub's responsive Kanban cockpit. Desktop shows four fitted columns; mobile uses status tabs and one column at a time, avoiding horizontal scrolling. Ticket headers show model badges: Claude, GPT, DeepSeek, or the Gemini+GPT art pair; unrouted work is visibly marked. Drag or use the Move control, filter by text/sprint/priority/model, and create routed tickets from the To Do column.
-7. Project rows keep status, counts and actions visible while sprint details stay collapsed. Expand the sprint drawer only when planning. This keeps several repositories readable in one viewport.
-8. If a project has no Closed column, the board shows **Enable Closed column**. It adds `"Closed"` to `statuses` in the repo's `backlog/config.yml`. Closed tickets count as finished in AI Hub sprint progress; Backlog.md's own dashboard still counts only Done.
+6. **Open board** opens AI Hub's responsive Kanban cockpit. Desktop shows six horizontally scrollable columns; mobile uses status tabs and one column at a time, avoiding horizontal scrolling. Ticket headers show model badges: Claude, GPT, DeepSeek, or the Gemini+GPT art pair; unrouted work is visibly marked. Drag or use the Move control, filter by text/sprint/priority/model, and create routed tickets from the To Do column.
+7. Project rows keep status, delivery phase, delivered work, counts and actions visible while sprint details stay collapsed. The delivered-work list includes `Done` and explicitly delivered `Closed` tickets. Wontfix and unclassified legacy Closed are never accomplishments; recent items are sorted by latest update. Expand the sprint drawer only when planning. This keeps several repositories readable in one viewport.
+8. Existing projects opt in using **Enable review workflow**; config is backed up and custom statuses retained. New projects start with all six states. Review records AI/manual mode, reviewer and evidence; Wontfix requires a reason; Closed ends a Done/Wontfix ticket without losing its resolution. Reopening requires a reason. Selecting AI review does not invoke a model automatically.
 
 AI Hub shares AI Live's visual system: JetBrains Mono, a 32px technical grid, translucent panels with a lime status rail, compact uppercase controls, semantic cyan/green/purple/amber/rose states, and a persisted light/dark theme toggle. AI Hub keeps its own task-routing layout rather than copying AI Live's monitoring widgets.
 Provider marks are local monochrome SVGs from [Lobe Icons](https://github.com/lobehub/lobe-icons), pinned from `@lobehub/icons-static-svg@1.101.0` under the MIT license. They are rendered as theme-colored masks; provider names remain visible text and monogram fallbacks remain available when CSS masks are unsupported. Attribution and the full license are in `assets/providers/LICENSE.lobe-icons`.
@@ -54,23 +54,25 @@ node bin/backlog-phase.mjs next --provider gpt --path /absolute/project
 node bin/backlog-phase.mjs claim TASK-12 --provider gpt --path /absolute/project
 ```
 
-The board's **Protocol health** chips expose missing model tiers, Done tickets without acceptance criteria, unchecked AC, unassigned/stale In Progress work, and blocked tasks. Clicking a chip filters to the exact tickets. State filters also include **Ready to claim**, **Blocked**, and **Stale**.
+The board's **Protocol health** chips expose missing model tiers, delivered tickets without acceptance criteria, unchecked AC, unassigned/stale In Progress work, and blocked tasks. Clicking a chip filters to the exact tickets. State filters also include **Ready to claim**, **Blocked**, and **Stale**.
 
 ## Docs
 
-- `docs/operations.md` — service setup, env vars, troubleshooting
-- `docs/api.md` — HTTP API
-- `docs/model-routing.md` — provider capabilities, routing labels, claim/escalation/review lifecycle
-- `docs/repo-setup.md` — reproducible setup for new and existing repositories
+- [docs/](docs/README.md) — AI Hub design, architecture diagram, API, operations and handoff.
+- [guides/](guides/README.md) — setup, migration, workflow and roadmap instructions for projects using AI Hub.
 
-### Roadmap Template
+`guides` is short and conventional. These are adoption guides, not vendor-authored “third-party docs.” Keep each topic in one home and link across the boundary.
 
-Projects can adopt a **phase-driven roadmap**: phases are Backlog.md milestones named `Phase N - <name>`, each closed by a manual review gate. The board's **Project roadmap** panel and **Phase metrics** are read from the project's real milestones (any number of phases); milestones not named `Phase N` (for example a "needs user" bucket) are left out of the roadmap.
+### Delivery roadmap vs feature backlog
 
-- **Quick start (5 min):** [`docs/roadmap-quickstart.md`](docs/roadmap-quickstart.md)
-- **Full guide:** [`docs/roadmap-guide.md`](docs/roadmap-guide.md)
+AI Hub's roadmap is a **phase-driven delivery roadmap**, not a complete product strategy document. It answers: which delivery phase is active, how many tickets are complete, what was recently delivered, and whether the phase gate passed. A feature backlog answers a different question: which capabilities or tickets should be built next.
+
+Projects can opt into the roadmap by creating Backlog.md milestones named `Phase N - <name>` and grouping tickets under them. Each phase can be closed by a manual review gate. The board's **Delivery roadmap** and **Delivery phase metrics** are read from the project's real milestones (any number of phases); milestones not named `Phase N` (for example a `needs user` bucket or a feature-only sprint) remain available in the board but are left out of the roadmap visualization.
+
+- **Quick start (5 min):** [`guides/roadmap-quickstart.md`](guides/roadmap-quickstart.md)
+- **Full guide:** [`guides/roadmap-guide.md`](guides/roadmap-guide.md)
 - **Visual diagram:** [`roadmap-diagram.html`](roadmap-diagram.html)
 - **Phase completion checklist:** [`templates/phase-completion-checklist.md`](templates/phase-completion-checklist.md)
 - **Phase retrospective:** [`templates/phase-retrospective.md`](templates/phase-retrospective.md)
 
-The roadmap is **optional**; projects can create custom sprints or work without milestones. AI Hub supports both.
+The roadmap is **optional**; projects can create custom sprints for feature planning or work without milestones. AI Hub supports both. Use the roadmap for phase-level outcomes and gates, and use ordinary sprints for feature slices, experiments, maintenance, or ad-hoc work.

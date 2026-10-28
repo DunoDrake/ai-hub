@@ -1,12 +1,12 @@
 # Phase Completion Checklist: {{PHASE_NAME}}
 
 Use this checklist at the end of a phase, before the manual review gate described in your
-project's roadmap guide (`docs/roadmap-guide.md`). Copy it into `backlog/` (e.g.
-`backlog/phase-0-completion-checklist.md`) and fill it in as the phase wraps up — don't
-leave it as an afterthought during the gate meeting itself.
+project's roadmap guide. Keep the filled checklist in project docs (outside backlog/),
+or create/edit it through `backlog doc` CLI. Never edit Backlog document Markdown directly.
 
 ```bash
-cp templates/phase-completion-checklist.md "backlog/phase-${PHASE_NUMBER}-completion-checklist.md"
+backlog doc create "Phase completion checklist" --type guide
+# Then use backlog doc edit --help to fill the document from this template.
 ```
 
 **Phase:** {{PHASE_NAME}} (e.g. "Phase 0: Foundation")
@@ -18,8 +18,9 @@ cp templates/phase-completion-checklist.md "backlog/phase-${PHASE_NUMBER}-comple
 
 ## 1. Ticket status
 
-- [ ] All tickets in this milestone are `Done`: `backlog task list -m "{{PHASE_NAME}}" --status "Done"`
-- [ ] No tickets remain `To Do` or `In Progress` in this milestone
+- [ ] All tickets are resolved: `backlog-phase status "{{PHASE_NAME}}" --json`
+- [ ] Wontfix has a reason; Closed has an explicit resolution; descoped work is accepted at this gate
+- [ ] No tickets remain `To Do`, `In Progress` or `Review` in this milestone
 - [ ] Any descoped or deferred tickets are explicitly noted below, with the reason and the phase they moved to
 
 Deferred tickets (if any):
@@ -31,7 +32,7 @@ Deferred tickets (if any):
 ## 2. Deliverables
 
 Check off what this phase actually produced. Use the phase's "Definition of Done" in your
-project's `docs/roadmap-guide.md` as the source of truth; the table below is a quick
+project's delivery roadmap guide as the source of truth; the table below is a quick
 reference, not a replacement.
 
 | Phase | Typical deliverables |
