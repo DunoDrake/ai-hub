@@ -8,6 +8,9 @@ local-audio/
 # Video projects and rendered outputs
 videos/
 
+# Backlog.md workflow migration backups
+backlog/*.bak
+
 # Local IDE and scratch tools
 .commandcode/
 clone_voice_local.py

@@ -60,3 +60,40 @@ Provider assignee handles are `@claude`, `@gpt`, `@gemini`, and `@deepseek`. Do 
 
 If a task has no routing label, do not implement it. Classify it first, add exactly one of `dev-high`, `dev-medium`, `dev-low`, or `art`, then follow the workflow. If classification is genuinely ambiguous between materially different outcomes, ask the user; otherwise choose the narrowest sufficient tier.
 <!-- AI-HUB PROTOCOL END -->
+
+## AI Hub repository rules
+
+Project-specific rules for this repository. They live outside the managed `AI-HUB PROTOCOL` block, so
+**Update** / `protocol` refresh never overwrites them. Keep `AGENTS.md`, `CLAUDE.md` and `GEMINI.md` identical.
+
+### Docs and guides follow every feature change
+
+A change to behavior, UI, API, CLI, env var, port/data location, workflow state or protocol template is not
+done until its docs are updated **in the same change**. Do this before moving the task to Review.
+
+| You changed | Update |
+|---|---|
+| `server.mjs` routes, request/response shape | `docs/api.md` |
+| Env vars, ports, data dirs, process lifecycle, troubleshooting | `docs/operations.md` |
+| Components, data flow, state model, trust boundary | `docs/architecture.md` |
+| `lib/workflow.mjs`, `bin/backlog-phase.mjs` commands or flags | `guides/workflow.md`, and `guides/model-routing.md` if routing is affected |
+| Setup, init, migration, adoption steps | `guides/repo-setup.md`, `guides/README.md` |
+| Roadmap, phase, gate, sprint behavior | `guides/roadmap-guide.md`, `guides/roadmap-quickstart.md` |
+| `templates/agent-protocol.md` | Refresh the block here (`POST /api/projects/:id/protocol` or equivalent) and keep the three instruction files identical |
+| Anything a user sees or runs | `README.md` |
+| Checkpoint, verification evidence | `docs/SESSION_HANDOFF.md` |
+
+- `docs/` = AI Hub's own design, API, operations. `guides/` = instructions for projects adopting AI Hub. Do not
+  duplicate lifecycle rules in both; keep one authoritative source and link to it.
+- Removing a feature means removing its docs, not leaving stale text. Grep README, `docs/` and `guides/` for the
+  old name, env var, endpoint or button label before finishing.
+- Put the docs files you touched in the task's `--append-notes` so the reviewer can check them.
+- A task that changes user-visible behavior needs an acceptance criterion covering docs. Review is not approved
+  while the docs table above has an unchecked row that applies.
+- Docs-only changes still run `node --test tests/*.test.mjs` and a relative-link check.
+
+### Progress stays in Backlog
+
+- Report progress from `backlog task list` / `backlog task view`, never from memory.
+- Do not create sprints or milestones unless the user asks.
+- Add a dated checkpoint to `docs/SESSION_HANDOFF.md` when you stop mid-task or finish a task.
